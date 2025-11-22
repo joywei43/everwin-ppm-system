@@ -332,8 +332,7 @@ const App: React.FC = () => {
     const allLines = [...headerLines, columns, ...rows];
     const csvContent = allLines
       .map((line) => line.map((v) => `"${(v ?? '').replace(/"/g, '""')}"`).join(','))
-      .join('
-');
+      .join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
