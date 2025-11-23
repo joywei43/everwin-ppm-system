@@ -11,9 +11,26 @@ interface SeatState {
   restSeconds: number;
   lastActiveStart: number | null;
   lastRestStart: number | null;
-  buyIn: number;
-  joinCount: number;
+  buyInAmount: number;
+  transferNote: string | null;
+  sessionStart: string | null;
   selectedForBatch: boolean;
+}
+
+interface SessionRow {
+  date: string;
+  tableId: number;
+  tableName: string;
+  seatId: number;
+  memberId: string;
+  startTime: string;
+  endTime: string;
+  activeSeconds: number;
+  restSeconds: number;
+  durationHMS: string;
+  buyInDisplay: string;
+  buyInAmount: number | null;
+  transferNote: string | null;
 }
 
 interface TableState {
@@ -26,11 +43,12 @@ interface TableState {
   lastStartTime: number | null;
   isRunning: boolean;
   seats: SeatState[];
+  sessions: SessionRow[];
 }
 
 const TABLE_COUNT = 4;
 const SEATS_PER_TABLE = 9;
-const STORAGE_KEY = 'everwin_poker_tables_v3';
+const STORAGE_KEY = 'everwin_poker_tables_v5';
 
 function formatHMS(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));
@@ -48,8 +66,7 @@ function formatDateTime(d: Date): string {
   const h = d.getHours().toString().padStart(2, '0');
   const min = d.getMinutes().toString().padStart(2, '0');
   const sec = d.getSeconds().toString().padStart(2, '0');
-  const ampm = d.getHours() >= 12 ? '下午' : '上午';
-  return `${y}/${m}/${day} ${ampm}${h}:${min}:${sec}`;
+  return `${y}-${m}-${day} ${h}:${min}:${sec}`;
 }
 
 function formatToday(): string {
@@ -69,8 +86,9 @@ function createInitialSeat(id: number): SeatState {
     restSeconds: 0,
     lastActiveStart: null,
     lastRestStart: null,
-    buyIn: 0,
-    joinCount: 0,
+    buyInAmount: 0,
+    transferNote: null,
+    sessionStart: null,
     selectedForBatch: false,
   };
 }
@@ -86,14 +104,19 @@ function createInitialTable(id: number): TableState {
     lastStartTime: null,
     isRunning: false,
     seats: Array.from({ length: SEATS_PER_TABLE }, (_, i) => createInitialSeat(i + 1)),
+    sessions: [],
   };
 }
 
 function loadInitialTables(): TableState[] {
-  if (typeof window === 'undefined') return Array.from({ length: TABLE_COUNT }, (_, i) => createInitialTable(i + 1));
+  if (typeof window === 'undefined') {
+    return Array.from({ length: TABLE_COUNT }, (_, i) => createInitialTable(i + 1));
+  }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return Array.from({ length: TABLE_COUNT }, (_, i) => createInitialTable(i + 1));
+    if (!raw) {
+      return Array.from({ length: TABLE_COUNT }, (_, i) => createInitialTable(i + 1));
+    }
     const parsed = JSON.parse(raw) as TableState[];
     return parsed.map((t, idx) => ({
       ...createInitialTable(idx + 1),
@@ -106,6 +129,7 @@ function loadInitialTables(): TableState[] {
             id: seatIdx + 1,
           }))
         : Array.from({ length: SEATS_PER_TABLE }, (_, i) => createInitialSeat(i + 1)),
+      sessions: Array.isArray(t.sessions) ? t.sessions : [],
     }));
   } catch {
     return Array.from({ length: TABLE_COUNT }, (_, i) => createInitialTable(i + 1));
@@ -153,9 +177,9 @@ const zhTexts = {
   stopped: '未開桌',
   startOrResume: '開桌 / 繼續',
   pause: '暫停牌桌',
-  stop: '關桌',
-  exportCsv: '匯出本局 CSV',
-  resetTable: 'Reset 本桌',
+  stop: '關桌（輸出本局）',
+  exportCsv: '手動匯出 CSV',
+  resetTable: 'Reset 本桌（匯出後清除）',
   today: '今天',
   currentTableTime: '牌桌時間',
   openedAt: '開桌時間',
@@ -166,24 +190,44 @@ const zhTexts = {
   statusIdle: '空位 / 未上桌',
   statusSeated: '上桌中',
   statusRest: '休息中',
-  todayTotal: '今日總上桌',
-  todayCount: '今日上桌次數',
+  todayTotal: '本局上桌時間',
+  todayCount: '本局上桌次數',
   restSeconds: '休息秒數',
-  buyIn: '買碼',
-  memberId: '會員ID',
-  batchLabel: '批次選取',
+  buyIn: '買碼總額',
+  memberId: '會員 ID',
+  batchLabel: '批次',
   btnSeat: '上桌',
   btnRest: '休息',
   btnLeave: '下桌',
   btnAddBuyIn: '加買籌碼',
+  btnBatchSeat: '批次上桌',
+  btnBatchLeave: '批次下桌',
   tableHasPlayers: '仍有玩家在桌上（非休息），請先讓所有玩家下桌。',
   tableNotRunning: '請先運行開桌，再為玩家上桌。',
   needMemberId: '請先輸入會員號碼再上桌。',
-  duplicateMember: '同一位會員已在其他位置上桌，請確認。',
-  batchNoSelection: '請先勾選要批次上桌的席次。',
+  duplicateMember: '同一位會員已在本桌其他位置上桌，請先處理座位移動。',
+  batchNoSelection: '請先勾選要批次操作的席次。',
   batchMissingMember: '批次上桌的每個席次都必須先輸入會員號。',
   batchPromptChips: '請輸入本次上桌每位玩家的買入籌碼（金額，可為 0）',
   invalidNumber: '請輸入正確的數字。',
+  confirmMove: (memberId: string, fromSeat: number, toSeat: number) =>
+    `會員 ${memberId} 目前在席次 ${fromSeat}，要移動到席次 ${toSeat} 嗎？`,
+  confirmReset: '確定要重置本桌所有資料嗎？系統會先自動匯出一份 CSV。',
+  confirmBatchLeave: '確定要將勾選的席次全部下桌並寫入紀錄嗎？',
+  csvHeaderDate: '日期',
+  csvHeaderTable: '桌號',
+  csvHeaderSeat: '席次',
+  csvHeaderMember: '會員 ID',
+  csvHeaderStart: '上桌時間',
+  csvHeaderEnd: '下桌時間',
+  csvHeaderActiveSec: '上桌秒數',
+  csvHeaderRestSec: '休息秒數',
+  csvHeaderDuration: '上桌時間(HH:MM:SS)',
+  csvHeaderBuyIn: '買碼',
+  csvHeaderTransfer: '轉席註記',
+  csvSummaryTotalBuyIn: '本局總買碼',
+  csvSummaryUniquePlayers: '不重複會員數',
+  csvSummaryTotalSessions: '本局紀錄筆數',
 };
 
 const enTexts = {
@@ -191,10 +235,10 @@ const enTexts = {
   running: 'Running',
   stopped: 'Stopped',
   startOrResume: 'Start / Resume',
-  pause: 'Pause',
-  stop: 'Close Table',
-  exportCsv: 'Export CSV',
-  resetTable: 'Reset Table',
+  pause: 'Pause Table',
+  stop: 'Close Table (Export)',
+  exportCsv: 'Export CSV (manual)',
+  resetTable: 'Reset Table (export & clear)',
   today: 'Today',
   currentTableTime: 'Table Time',
   openedAt: 'Opened At',
@@ -205,24 +249,44 @@ const enTexts = {
   statusIdle: 'Empty / Idle',
   statusSeated: 'Seated',
   statusRest: 'Resting',
-  todayTotal: 'Total Seated Today',
-  todayCount: 'Seat Count Today',
+  todayTotal: 'Session Time',
+  todayCount: 'Seat Count',
   restSeconds: 'Rest Seconds',
-  buyIn: 'Buy-in',
+  buyIn: 'Total Buy-in',
   memberId: 'Member ID',
   batchLabel: 'Batch',
   btnSeat: 'Seat',
   btnRest: 'Rest',
   btnLeave: 'Leave',
   btnAddBuyIn: 'Add Chips',
+  btnBatchSeat: 'Batch Seat',
+  btnBatchLeave: 'Batch Leave',
   tableHasPlayers: 'There are still players seated (not resting). Please let them leave first.',
   tableNotRunning: 'Please start the table clock before seating players.',
   needMemberId: 'Please enter a member ID before seating.',
-  duplicateMember: 'This member is already seated at another position.',
-  batchNoSelection: 'Please select seats for batch seating first.',
+  duplicateMember: 'This member is already seated at another position. Please handle seat move first.',
+  batchNoSelection: 'Please select seats for batch operation first.',
   batchMissingMember: 'Every batch seat must have a member ID.',
   batchPromptChips: 'Enter buy-in amount for each selected player (can be 0).',
   invalidNumber: 'Please enter a valid number.',
+  confirmMove: (memberId: string, fromSeat: number, toSeat: number) =>
+    `Member ${memberId} is currently seated at Seat ${fromSeat}. Move to Seat ${toSeat}?`,
+  confirmReset: 'Reset this table and clear all data? A CSV will be exported first.',
+  confirmBatchLeave: 'Leave all selected seats and write their sessions?',
+  csvHeaderDate: 'Date',
+  csvHeaderTable: 'Table',
+  csvHeaderSeat: 'Seat',
+  csvHeaderMember: 'Member ID',
+  csvHeaderStart: 'Start Time',
+  csvHeaderEnd: 'End Time',
+  csvHeaderActiveSec: 'Active Seconds',
+  csvHeaderRestSec: 'Rest Seconds',
+  csvHeaderDuration: 'Duration (HH:MM:SS)',
+  csvHeaderBuyIn: 'Buy-in',
+  csvHeaderTransfer: 'Transfer Note',
+  csvSummaryTotalBuyIn: 'Total Buy-in',
+  csvSummaryUniquePlayers: 'Unique Members',
+  csvSummaryTotalSessions: 'Total Sessions',
 };
 
 const App: React.FC = () => {
@@ -238,18 +302,20 @@ const App: React.FC = () => {
 
   const t = lang === 'zh' ? zhTexts : enTexts;
   const todayText = formatToday();
+  const langToggleLabel = lang === 'zh' ? 'English' : '中文';
 
   const currentTableIndex = useMemo(
-    () => tables.findIndex((t) => t.id === currentTableId) ?? 0,
+    () => tables.findIndex((tbl) => tbl.id === currentTableId),
     [tables, currentTableId],
   );
   const currentTable = tables[currentTableIndex] ?? tables[0];
 
-  const langToggleLabel = lang === 'zh' ? 'English' : '中文';
-
   const updateTable = (tableId: number, updater: (t: TableState) => TableState) => {
     setTables((prev) => prev.map((tbl) => (tbl.id === tableId ? updater(tbl) : tbl)));
   };
+
+  const hasActivePlayers = (tbl: TableState): boolean =>
+    tbl.seats.some((s) => s.status === 'seated');
 
   const handleStartOrResume = () => {
     if (!currentTable) return;
@@ -266,9 +332,6 @@ const App: React.FC = () => {
       };
     });
   };
-
-  const hasActivePlayers = (tbl: TableState): boolean =>
-    tbl.seats.some((s) => s.status === 'seated');
 
   const handlePause = () => {
     if (!currentTable) return;
@@ -289,45 +352,62 @@ const App: React.FC = () => {
     });
   };
 
-  const exportCsvForTable = (tbl: TableState, closedAtOverride?: string) => {
+  const computeTableSummary = (tbl: TableState, nowMsSnapshot: number) => {
+    const elapsed = getTableElapsedSeconds(tbl, nowMsSnapshot);
+    const totalBuyIn = tbl.sessions.reduce((sum, s) => (s.buyInAmount ?? 0) + sum, 0);
+    const uniqueMembers = Array.from(new Set(tbl.sessions.map((s) => s.memberId))).filter(
+      (id) => id.trim() !== '',
+    ).length;
+    return { elapsed, totalBuyIn, uniqueMembers, totalSessions: tbl.sessions.length };
+  };
+
+  const exportCsvForTable = (tbl: TableState, nowMsSnapshot: number, closedAtOverride?: string) => {
     const closedAt = closedAtOverride ?? tbl.closedAt ?? '';
-    const elapsed = getTableElapsedSeconds(tbl, nowMs);
-    const headerLines = [
+    const { elapsed, totalBuyIn, uniqueMembers, totalSessions } = computeTableSummary(
+      tbl,
+      nowMsSnapshot,
+    );
+
+    const headerLines: string[][] = [
       ['Table', tbl.name],
       ['Date', todayText],
       ['Blinds', tbl.blinds ?? ''],
       [t.openedAt, tbl.openedAt ?? ''],
       [t.closedAt, closedAt],
       [t.currentTableTime, formatHMS(elapsed)],
+      [t.csvSummaryTotalBuyIn, totalBuyIn.toString()],
+      [t.csvSummaryUniquePlayers, uniqueMembers.toString()],
+      [t.csvSummaryTotalSessions, totalSessions.toString()],
       [''],
     ];
 
     const columns = [
-      lang === 'zh' ? '日期' : 'Date',
-      'Seat',
-      lang === 'zh' ? '會員號碼' : 'Member ID',
-      lang === 'zh' ? '上桌時間(秒)' : 'Active Seconds',
-      lang === 'zh' ? '休息秒數' : 'Rest Seconds',
-      lang === 'zh' ? '時長(格式)' : 'Duration (H:M:S)',
-      lang === 'zh' ? '買碼' : 'Buy-in',
-      lang === 'zh' ? '上桌次數' : 'Seat Count',
+      t.csvHeaderDate,
+      t.csvHeaderTable,
+      t.csvHeaderSeat,
+      t.csvHeaderMember,
+      t.csvHeaderStart,
+      t.csvHeaderEnd,
+      t.csvHeaderActiveSec,
+      t.csvHeaderRestSec,
+      t.csvHeaderDuration,
+      t.csvHeaderBuyIn,
+      t.csvHeaderTransfer,
     ];
 
-    const rows = tbl.seats.map((seat) => {
-      const active = getSeatActiveSeconds(seat, nowMs);
-      const rest = getSeatRestSeconds(seat, nowMs);
-      const duration = formatHMS(active);
-      return [
-        todayText,
-        seat.id.toString(),
-        seat.memberId,
-        active.toString(),
-        rest.toString(),
-        duration,
-        seat.buyIn.toString(),
-        seat.joinCount.toString(),
-      ];
-    });
+    const rows = tbl.sessions.map((row) => [
+      row.date,
+      row.tableName,
+      row.seatId.toString(),
+      row.memberId,
+      row.startTime,
+      row.endTime,
+      row.activeSeconds.toString(),
+      row.restSeconds.toString(),
+      row.durationHMS,
+      row.buyInDisplay,
+      row.transferNote ?? '',
+    ]);
 
     const allLines = [...headerLines, columns, ...rows];
     const csvContent = allLines
@@ -338,7 +418,10 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const fileName = `PokerSessions_${todayText.replace(/-/g, '')}_${tbl.name.replace(/\s+/g, '')}.csv`;
+    const fileName = `PokerSessions_${todayText.replace(/-/g, '')}_${tbl.name.replace(
+      /\s+/g,
+      '',
+    )}.csv`;
     link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
@@ -352,12 +435,12 @@ const App: React.FC = () => {
     }
     const now = Date.now();
     const closedAtStr = formatDateTime(new Date());
-    const tableSnapshot: TableState = {
+    const snapshot: TableState = {
       ...currentTable,
       elapsedSeconds: getTableElapsedSeconds(currentTable, now),
       closedAt: closedAtStr,
     };
-    exportCsvForTable(tableSnapshot, closedAtStr);
+    exportCsvForTable(snapshot, now, closedAtStr);
 
     updateTable(currentTable.id, (tbl) => {
       const elapsedSeconds = getTableElapsedSeconds(tbl, now);
@@ -373,13 +456,32 @@ const App: React.FC = () => {
 
   const handleExportCsv = () => {
     if (!currentTable) return;
-    exportCsvForTable(currentTable);
+    const now = Date.now();
+    const snapshot: TableState = {
+      ...currentTable,
+      elapsedSeconds: getTableElapsedSeconds(currentTable, now),
+    };
+    exportCsvForTable(snapshot, now);
   };
 
   const handleResetTable = () => {
     if (!currentTable) return;
-    if (!window.confirm('確定要重置本桌所有資料嗎？This will clear all data for this table.')) return;
-    updateTable(currentTable.id, (tbl) => createInitialTable(tbl.id));
+    if (!window.confirm(t.confirmReset)) return;
+    const now = Date.now();
+    if (currentTable.sessions.length > 0) {
+      const snapshot: TableState = {
+        ...currentTable,
+        elapsedSeconds: getTableElapsedSeconds(currentTable, now),
+      };
+      exportCsvForTable(snapshot, now);
+    }
+    updateTable(currentTable.id, (tbl) => {
+      const fresh = createInitialTable(tbl.id);
+      return {
+        ...fresh,
+        name: tbl.name,
+      };
+    });
   };
 
   const handleBlindsChange = (value: string) => {
@@ -408,15 +510,58 @@ const App: React.FC = () => {
     }));
   };
 
-  const checkDuplicateMember = (tbl: TableState, seatId: number, memberId: string): boolean => {
-    if (!memberId) return false;
-    return tbl.seats.some(
-      (s) =>
-        s.id !== seatId &&
-        s.memberId === memberId &&
-        (s.status === 'seated' || s.status === 'rest'),
+  const findSeatByMember = (tbl: TableState, memberId: string): SeatState | undefined => {
+    const id = memberId.trim();
+    if (!id) return undefined;
+    return tbl.seats.find(
+      (s) => s.memberId === id && (s.status === 'seated' || s.status === 'rest'),
     );
   };
+
+  const appendSessionRow = (
+    tbl: TableState,
+    seat: SeatState,
+    endTimeStr: string,
+    nowMsSnapshot: number,
+  ): SessionRow | null => {
+    if (!seat.memberId || !seat.sessionStart) return null;
+    const activeSeconds = getSeatActiveSeconds(seat, nowMsSnapshot);
+    const restSeconds = getSeatRestSeconds(seat, nowMsSnapshot);
+    const durationHMS = formatHMS(activeSeconds);
+    const buyInDisplay = seat.transferNote
+      ? seat.transferNote
+      : seat.buyInAmount.toString();
+    const buyInAmount = seat.transferNote ? null : seat.buyInAmount;
+    return {
+      date: formatToday(),
+      tableId: tbl.id,
+      tableName: tbl.name,
+      seatId: seat.id,
+      memberId: seat.memberId,
+      startTime: seat.sessionStart,
+      endTime: endTimeStr,
+      activeSeconds,
+      restSeconds,
+      durationHMS,
+      buyInDisplay,
+      buyInAmount,
+      transferNote: seat.transferNote,
+    };
+  };
+
+  const clearSeat = (seat: SeatState): SeatState => ({
+    ...seat,
+    status: 'idle',
+    activeSeconds: 0,
+    restSeconds: 0,
+    lastActiveStart: null,
+    lastRestStart: null,
+    buyInAmount: 0,
+    transferNote: null,
+    sessionStart: null,
+    selectedForBatch: false,
+    memberId: '',
+  });
 
   const handleSeatUp = (seatId: number) => {
     if (!currentTable) return;
@@ -436,36 +581,75 @@ const App: React.FC = () => {
       return;
     }
 
-    if (checkDuplicateMember(tbl, seatId, memberId)) {
-      window.alert(t.duplicateMember);
+    const existing = findSeatByMember(tbl, memberId);
+    const now = Date.now();
+
+    if (existing && existing.id !== seatId) {
+      const ok = window.confirm(t.confirmMove(memberId, existing.id, seatId));
+      if (!ok) return;
+
+      updateTable(tbl.id, (prevTbl) => {
+        const closedAtStr = formatDateTime(new Date());
+        const nowSnap = now;
+        const sessions: SessionRow[] = [...prevTbl.sessions];
+        const newSeats = prevTbl.seats.map((s) => {
+          if (s.id === existing.id) {
+            const session = appendSessionRow(prevTbl, s, closedAtStr, nowSnap);
+            if (session) sessions.push(session);
+            return clearSeat(s);
+          }
+          return s;
+        });
+
+        const updatedSeats = newSeats.map((s) => {
+          if (s.id !== seatId) return s;
+          return {
+            ...s,
+            status: 'seated' as SeatStatus,
+            lastActiveStart: nowSnap,
+            lastRestStart: null,
+            activeSeconds: 0,
+            restSeconds: 0,
+            sessionStart: formatDateTime(new Date()),
+            transferNote: `Transfer-Seat${existing.id}`,
+          };
+        });
+
+        return {
+          ...prevTbl,
+          seats: updatedSeats,
+          sessions,
+        };
+      });
       return;
     }
 
-    const now = Date.now();
     updateTable(tbl.id, (prevTbl) => {
+      const nowSnap = now;
       const seats = prevTbl.seats.map((s) => {
         if (s.id !== seatId) return s;
         if (s.status === 'seated') return s;
         let activeSeconds = s.activeSeconds;
         let restSeconds = s.restSeconds;
-        let joinCount = s.joinCount;
+        let sessionStart = s.sessionStart;
         if (s.status === 'rest' && s.lastRestStart != null) {
-          const delta = Math.floor((now - s.lastRestStart) / 1000);
+          const delta = Math.floor((nowSnap - s.lastRestStart) / 1000);
           restSeconds += Math.max(0, delta);
         }
         if (s.status === 'idle') {
-          joinCount = s.joinCount + 1;
           activeSeconds = 0;
           restSeconds = 0;
+          sessionStart = formatDateTime(new Date());
         }
         return {
           ...s,
           status: 'seated' as SeatStatus,
-          lastActiveStart: now,
+          lastActiveStart: nowSnap,
           lastRestStart: null,
           activeSeconds,
           restSeconds,
-          joinCount,
+          sessionStart,
+          transferNote: s.transferNote,
         };
       });
       return { ...prevTbl, seats };
@@ -496,30 +680,17 @@ const App: React.FC = () => {
   const handleLeave = (seatId: number) => {
     if (!currentTable) return;
     const now = Date.now();
+    const endTimeStr = formatDateTime(new Date());
     updateTable(currentTable.id, (tbl) => {
+      const nowSnap = now;
+      const sessions: SessionRow[] = [...tbl.sessions];
       const seats = tbl.seats.map((s) => {
         if (s.id !== seatId) return s;
-        let activeSeconds = s.activeSeconds;
-        let restSeconds = s.restSeconds;
-        if (s.status === 'seated' && s.lastActiveStart != null) {
-          const delta = Math.floor((now - s.lastActiveStart) / 1000);
-          activeSeconds += Math.max(0, delta);
-        } else if (s.status === 'rest' && s.lastRestStart != null) {
-          const delta = Math.floor((now - s.lastRestStart) / 1000);
-          restSeconds += Math.max(0, delta);
-        }
-        return {
-          ...s,
-          status: 'idle' as SeatStatus,
-          lastActiveStart: null,
-          lastRestStart: null,
-          activeSeconds,
-          restSeconds,
-          selectedForBatch: false,
-          memberId: '',
-        };
+        const session = appendSessionRow(tbl, s, endTimeStr, nowSnap);
+        if (session) sessions.push(session);
+        return clearSeat(s);
       });
-      return { ...tbl, seats };
+      return { ...tbl, seats, sessions };
     });
   };
 
@@ -542,7 +713,7 @@ const App: React.FC = () => {
     updateTable(currentTable.id, (tbl) => ({
       ...tbl,
       seats: tbl.seats.map((s) =>
-        s.id === seatId ? { ...s, buyIn: s.buyIn + Math.max(0, amt) } : s,
+        s.id === seatId ? { ...s, buyInAmount: s.buyInAmount + Math.max(0, amt) } : s,
       ),
     }));
   };
@@ -563,14 +734,13 @@ const App: React.FC = () => {
       window.alert(t.batchMissingMember);
       return;
     }
-
     for (const s of selected) {
-      if (checkDuplicateMember(tbl, s.id, s.memberId.trim())) {
+      const existing = findSeatByMember(tbl, s.memberId);
+      if (existing && existing.id !== s.id) {
         window.alert(t.duplicateMember);
         return;
       }
     }
-
     const raw = window.prompt(t.batchPromptChips, '0');
     if (raw == null) return;
     const amt = Number(raw);
@@ -581,33 +751,65 @@ const App: React.FC = () => {
     const buyInDelta = Math.max(0, amt);
     const now = Date.now();
     updateTable(tbl.id, (prevTbl) => {
+      const nowSnap = now;
       const seats = prevTbl.seats.map((s) => {
         if (!s.selectedForBatch) return s;
-        if (s.status === 'seated') return s;
+        if (s.status === 'seated') {
+          return {
+            ...s,
+            buyInAmount: s.buyInAmount + buyInDelta,
+          };
+        }
         let activeSeconds = s.activeSeconds;
         let restSeconds = s.restSeconds;
-        let joinCount = s.joinCount;
+        let sessionStart = s.sessionStart;
         if (s.status === 'rest' && s.lastRestStart != null) {
-          const delta = Math.floor((now - s.lastRestStart) / 1000);
+          const delta = Math.floor((nowSnap - s.lastRestStart) / 1000);
           restSeconds += Math.max(0, delta);
         }
         if (s.status === 'idle') {
-          joinCount = s.joinCount + 1;
           activeSeconds = 0;
           restSeconds = 0;
+          sessionStart = formatDateTime(new Date());
         }
         return {
           ...s,
           status: 'seated' as SeatStatus,
-          lastActiveStart: now,
+          lastActiveStart: nowSnap,
           lastRestStart: null,
           activeSeconds,
           restSeconds,
-          joinCount,
-          buyIn: s.buyIn + buyInDelta,
+          sessionStart,
+          buyInAmount: s.buyInAmount + buyInDelta,
+          transferNote: s.transferNote,
         };
       });
       return { ...prevTbl, seats };
+    });
+  };
+
+  const handleBatchLeave = () => {
+    if (!currentTable) return;
+    const tbl = currentTable;
+    const selected = tbl.seats.filter((s) => s.selectedForBatch && s.status !== 'idle');
+    if (selected.length === 0) {
+      window.alert(t.batchNoSelection);
+      return;
+    }
+    const ok = window.confirm(t.confirmBatchLeave);
+    if (!ok) return;
+    const now = Date.now();
+    const endTimeStr = formatDateTime(new Date());
+    updateTable(tbl.id, (prevTbl) => {
+      const nowSnap = now;
+      const sessions: SessionRow[] = [...prevTbl.sessions];
+      const seats = prevTbl.seats.map((s) => {
+        if (!s.selectedForBatch || s.status === 'idle') return s;
+        const session = appendSessionRow(prevTbl, s, endTimeStr, nowSnap);
+        if (session) sessions.push(session);
+        return clearSeat(s);
+      });
+      return { ...prevTbl, seats, sessions };
     });
   };
 
@@ -620,10 +822,10 @@ const App: React.FC = () => {
           <div className="app-header-main">
             <div className="app-title">
               <span>EVERWIN 撲克桌邊管理系統</span>
-              <span className="app-title-badge">Poker Table Manager</span>
+              <span className="app-title-badge">Poker Table Manager v5</span>
             </div>
             <div className="app-subtitle">
-              多桌中央牌桌時間 + 9 座位上桌計時，適用於現場牌桌經理玩家時數與買碼籌碼紀錄。本機儲存：每台裝置各自獨立紀錄。
+              多桌中央牌桌時間 + 9 座位上桌計時，適用於現場牌桌經理玩家時數與買碼紀錄。本機儲存：每台裝置各自獨立紀錄。
             </div>
           </div>
           <div className="app-header-right">
@@ -784,16 +986,16 @@ const App: React.FC = () => {
                         <div className="meta-value">{formatHMS(activeSeconds)}</div>
                       </div>
                       <div>
-                        <div className="meta-label">{t.todayCount}</div>
-                        <div className="meta-value">{seat.joinCount}</div>
-                      </div>
-                      <div>
                         <div className="meta-label">{t.restSeconds}</div>
                         <div className="meta-value">{restSeconds}</div>
                       </div>
                       <div>
                         <div className="meta-label">{t.buyIn}</div>
-                        <div className="meta-value">{seat.buyIn}</div>
+                        <div className="meta-value">{seat.buyInAmount}</div>
+                      </div>
+                      <div>
+                        <div className="meta-label">{t.memberId}</div>
+                        <div className="meta-value">{seat.memberId || '-'}</div>
                       </div>
                     </div>
                     <div className="seat-actions-row">
@@ -854,7 +1056,14 @@ const App: React.FC = () => {
                 className="seat-btn btn-xs-green"
                 onClick={handleBatchSeat}
               >
-                {lang === 'zh' ? '批次上桌' : 'Batch Seat'}
+                {t.btnBatchSeat}
+              </button>
+              <button
+                type="button"
+                className="seat-btn btn-xs-red"
+                onClick={handleBatchLeave}
+              >
+                {t.btnBatchLeave}
               </button>
             </div>
           </section>

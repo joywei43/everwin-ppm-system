@@ -1,8 +1,8 @@
 :root {
-  --bg: #050816;
+  --bg: #020617;
   --bg-soft: #0b1022;
-  --panel: #111827;
-  --panel-soft: #1f2937;
+  --panel: #020617;
+  --panel-soft: #020617;
   --accent-green: #22c55e;
   --accent-yellow: #eab308;
   --accent-red: #f97373;
@@ -40,12 +40,12 @@ body {
 .app-shell {
   width: 100%;
   max-width: 1440px;
-  background: linear-gradient(135deg, rgba(15,23,42,0.98), rgba(15,23,42,0.92));
+  background: radial-gradient(circle at top, #020617 0, #020617 50%, #000 100%);
   border-radius: 24px;
   padding: 20px 24px;
   box-shadow:
     0 40px 80px rgba(0,0,0,0.7),
-    0 0 0 1px rgba(148,163,184,0.12);
+    0 0 0 1px rgba(15,23,42,0.9);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -128,13 +128,13 @@ body {
 }
 
 .left-panel {
-  background: radial-gradient(circle at top left, rgba(30,64,175,0.45), rgba(15,23,42,0.98));
+  background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(2,6,23,1));
   border-radius: 20px;
   padding: 18px 18px 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  border: 1px solid rgba(30,64,175,0.35);
+  border: 1px solid rgba(30,64,175,0.5);
   box-shadow: 0 20px 40px rgba(15,23,42,0.85);
 }
 
@@ -172,7 +172,7 @@ body {
 
 .table-tabs {
   display: none;
-  background: rgba(15,23,42,0.85);
+  background: rgba(15,23,42,0.9);
   padding: 4px;
   border-radius: 999px;
   border: 1px solid rgba(51,65,85,0.9);
@@ -204,9 +204,9 @@ body {
   margin-top: 8px;
   padding: 18px 16px 16px;
   border-radius: 18px;
-  background: radial-gradient(circle at top left, rgba(15,23,42,1), rgba(6,95,70,0.4));
-  border: 1px solid rgba(34,197,94,0.45);
-  box-shadow: 0 18px 35px rgba(22,163,74,0.6);
+  background: radial-gradient(circle at top left, rgba(15,23,42,1), rgba(6,95,70,0.5));
+  border: 1px solid rgba(34,197,94,0.6);
+  box-shadow: 0 18px 35px rgba(22,163,74,0.7);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -234,7 +234,7 @@ body {
 
 .clock-status-text.stopped {
   border-color: rgba(248,113,113,0.8);
-  background: rgba(127,29,29,0.5);
+  background: rgba(127,29,29,0.6);
   color: #fecaca;
 }
 
@@ -323,8 +323,8 @@ body {
   margin-top: 8px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(15,23,42,0.85);
-  border: 1px dashed rgba(75,85,99,0.8);
+  background: rgba(15,23,42,0.9);
+  border: 1px dashed rgba(75,85,99,0.9);
   font-size: 11px;
   color: var(--text-sub);
   display: flex;
@@ -343,7 +343,7 @@ body {
 }
 
 .info-input {
-  width: 120px;
+  width: 140px;
   padding: 4px 8px;
   border-radius: 999px;
   border: 1px solid rgba(55,65,81,0.9);
@@ -356,8 +356,8 @@ body {
   background: radial-gradient(circle at top right, rgba(56,189,248,0.35), rgba(15,23,42,1));
   border-radius: 20px;
   padding: 16px;
-  border: 1px solid rgba(37,99,235,0.4);
-  box-shadow: 0 20px 45px rgba(30,64,175,0.9);
+  border: 1px solid rgba(37,99,235,0.5);
+  box-shadow: 0 20px 45px rgba(30,64,175,0.95);
 }
 
 .seat-grid {
@@ -502,12 +502,14 @@ body {
   align-items: center;
   gap: 4px;
   color: var(--text-sub);
+  margin-left: 6px;
 }
 
 .app-footer-batch {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 @media (max-width: 960px) {
