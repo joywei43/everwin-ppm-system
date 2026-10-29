@@ -1,3 +1,4 @@
+import Queue from './Queue';
 import { useCloudTables, CloudLogin } from './cloud';
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -1062,6 +1063,7 @@ const App: React.FC = () => {
             </div>
           </section>
         </main>
+        <Queue />
       </div>
       </fieldset>
     </div>

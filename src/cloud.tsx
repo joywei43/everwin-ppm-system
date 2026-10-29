@@ -26,7 +26,7 @@ export function useCloudTables(initial: () => TableState[]) {
     async function refresh() {
       if (locked.current) return;
       locked.current = true;
-      try { const data = await request('/ppm'); if (!disposed) { receive(data); setReady(true); setMessage('Connected · Live Update synced'); } }
+      try { const data = await request('/ppm'); if (!disposed) { receive(data); setReady(true); setMessage(data.version ? 'Connected · Live Update synced' : 'Connected · Start a table to publish PPM tables'); } }
       catch (e) { if (!disposed) setMessage(String((e as Error).message)); }
       finally { locked.current = false; }
     }
