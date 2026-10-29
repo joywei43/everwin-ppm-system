@@ -1,3 +1,4 @@
+import { useCloudTables, CloudLogin } from './cloud';
 import React, { useEffect, useMemo, useState } from 'react';
 
 type SeatStatus = 'idle' | 'seated' | 'rest';
@@ -33,7 +34,8 @@ interface SessionRow {
   transferNote: string | null;
 }
 
-interface TableState {
+export interface TableState {
+  gameType: string;
   id: number;
   name: string;
   blinds: string;
@@ -96,8 +98,9 @@ function createInitialSeat(id: number): SeatState {
 function createInitialTable(id: number): TableState {
   return {
     id,
-    name: `Table ${id}`,
-    blinds: '',
+    name: `T${[1,2,3,5][id-1]}`,
+    gameType: 'NLH',
+    blinds: '50 / 100',
     openedAt: null,
     closedAt: null,
     elapsedSeconds: 0,
@@ -136,16 +139,6 @@ function loadInitialTables(): TableState[] {
   }
 }
 
-function usePersistentTables(): [TableState[], React.Dispatch<React.SetStateAction<TableState[]>>] {
-  const [tables, setTables] = useState<TableState[]>(() => loadInitialTables());
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tables));
-  }, [tables]);
-
-  return [tables, setTables];
-}
 
 function getTableElapsedSeconds(table: TableState, nowMs: number): number {
   if (table.isRunning && table.lastStartTime != null) {
@@ -290,7 +283,8 @@ const enTexts = {
 };
 
 const App: React.FC = () => {
-  const [tables, setTables] = usePersistentTables();
+  const cloud = useCloudTables(() => Array.from({length:4},(_,i)=>createInitialTable(i+1)));
+  const { tables, setTables } = cloud;
   const [currentTableId, setCurrentTableId] = useState(1);
   const [lang, setLang] = useState<Lang>('zh');
   const [nowMs, setNowMs] = useState(Date.now());
@@ -315,7 +309,7 @@ const App: React.FC = () => {
   };
 
   const hasActivePlayers = (tbl: TableState): boolean =>
-    tbl.seats.some((s) => s.status === 'seated');
+    tbl.seats.some((s) => s.status !== 'idle');
 
   const handleStartOrResume = () => {
     if (!currentTable) return;
@@ -488,7 +482,7 @@ const App: React.FC = () => {
     if (!currentTable) return;
     updateTable(currentTable.id, (tbl) => ({
       ...tbl,
-      blinds: value,
+      blinds: value.trim().replace(/\s*[-/]\s*/g, ' / '),
     }));
   };
 
@@ -815,17 +809,20 @@ const App: React.FC = () => {
 
   const tableElapsed = currentTable ? getTableElapsedSeconds(currentTable, nowMs) : 0;
 
+  if (!cloud.ready) return <CloudLogin cloud={cloud} />;
   return (
     <div className="app-root">
+      <div role="status">{cloud.message} <button onClick={cloud.logout}>Sign out</button></div>
+      <fieldset disabled={cloud.busy} style={{border:0,padding:0,margin:0}}>
       <div className="app-shell">
         <header className="app-header">
           <div className="app-header-main">
             <div className="app-title">
               <span>EVERWIN 撲克桌邊管理系統</span>
-              <span className="app-title-badge">Poker Table Manager v5</span>
+              <span className="app-title-badge">Poker Table Manager · Online</span>
             </div>
             <div className="app-subtitle">
-              多桌中央牌桌時間 + 9 座位上桌計時，適用於現場牌桌經理玩家時數與買碼紀錄。本機儲存：每台裝置各自獨立紀錄。
+              多桌中央牌桌時間 + 9 座位上桌計時，適用於現場牌桌經理玩家時數與買碼紀錄。雲端同步 · Live Update 自動更新。
             </div>
           </div>
           <div className="app-header-right">
@@ -903,12 +900,8 @@ const App: React.FC = () => {
               <div className="left-info-extra">
                 <div className="info-row">
                   <span className="info-label">{t.blinds}</span>
-                  <input
-                    className="info-input"
-                    value={currentTable?.blinds ?? ''}
-                    placeholder={t.blindsPlaceholder}
-                    onChange={(e) => handleBlindsChange(e.target.value)}
-                  />
+                  <select className="info-input" value={currentTable.gameType} onChange={e=>updateTable(currentTable.id,t=>({...t,gameType:e.target.value}))}>{["NLH","PLO","Others"].map(v=><option key={v}>{v}</option>)}</select>
+                  <select className="info-input" value={currentTable.blinds} onChange={e=>handleBlindsChange(e.target.value)}>{['25 / 50','50 / 50','50 / 100','100 / 100','100 / 200'].map(v=><option key={v}>{v}</option>)}</select>
                 </div>
               </div>
 
@@ -1034,8 +1027,9 @@ const App: React.FC = () => {
                       <input
                         className="member-input"
                         placeholder={t.memberId}
-                        value={seat.memberId}
-                        onChange={(e) => handleMemberChange(seat.id, e.target.value)}
+                        defaultValue={seat.memberId}
+                        key={seat.id + ':' + seat.memberId}
+                        onBlur={(e) => {if(e.target.value.trim() !== seat.memberId) handleMemberChange(seat.id, e.target.value);}}
                       />
                       <label className="batch-checkbox">
                         <input
@@ -1069,6 +1063,7 @@ const App: React.FC = () => {
           </section>
         </main>
       </div>
+      </fieldset>
     </div>
   );
 };
