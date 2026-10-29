@@ -4,6 +4,7 @@ const API = ((import.meta as any).env.VITE_API_URL || 'https://everest-waiting-a
 export function useCloudTables(initial: () => TableState[]) {
   const [tables, putTables] = useState<TableState[]>(initial);
   const current = useRef(tables), version = useRef(0), locked = useRef(false);
+  const refreshing = useRef<Promise<void> | null>(null);
   const [token, setToken] = useState(() => sessionStorage.getItem('ppm-session') || '');
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   const receive = useCallback((data: any) => {
@@ -24,22 +25,28 @@ export function useCloudTables(initial: () => TableState[]) {
     if (!token) return;
     let disposed = false;
     async function refresh() {
-      if (locked.current) return;
-      locked.current = true;
+      if (locked.current || refreshing.current) return;
       try { const data = await request('/ppm'); if (!disposed) { receive(data); setReady(true); setMessage(data.version ? 'Connected · Live Update synced' : 'Connected · Start a table to publish PPM tables'); } }
       catch (e) { if (!disposed) setMessage(String((e as Error).message)); }
-      finally { locked.current = false; }
+
     }
-    refresh(); const id = window.setInterval(refresh, 3000);
+    const poll = () => { if (locked.current || refreshing.current) return; refreshing.current = refresh().finally(()=>{refreshing.current=null;}); };
+    poll(); const id = window.setInterval(poll, 3000);
     return () => { disposed = true; clearInterval(id); };
   }, [token, receive]);
   const setTables: React.Dispatch<React.SetStateAction<TableState[]>> = (change) => {
     if (locked.current) { setMessage('Sync in progress. Please retry.'); return; }
-    const next = typeof change === 'function' ? change(current.current) : change;
     locked.current = true; setBusy(true); setMessage('Saving…');
-    request('/ppm','PUT',{version:version.current,tables:next}).then(data=>{receive(data);setMessage('Saved · Live Update synced');}).catch(async e=>{
-      setMessage(e.message); try {receive(await request('/ppm'));} catch {} 
-    }).finally(()=>{locked.current=false;setBusy(false);});
+    (async () => {
+      try {
+        if (refreshing.current) await refreshing.current;
+        const next = typeof change === 'function' ? change(current.current) : change;
+        const data = await request('/ppm','PUT',{version:version.current,tables:next});
+        receive(data); setMessage('Saved · Live Update synced');
+      } catch(e) {
+        setMessage((e as Error).message); try {receive(await request('/ppm'));} catch {}
+      } finally {locked.current=false;setBusy(false);}
+    })();
   };
   const login = async (password: string) => {
     setBusy(true);
