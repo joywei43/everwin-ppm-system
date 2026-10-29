@@ -188,7 +188,7 @@ const zhTexts = {
   todayCount: '本局上桌次數',
   restSeconds: '休息秒數',
   buyIn: '買碼總額',
-  memberId: '會員 ID',
+  memberId: '名稱 / 會員號碼',
   batchLabel: '批次',
   btnSeat: '上桌',
   btnRest: '休息',
@@ -198,7 +198,7 @@ const zhTexts = {
   btnBatchLeave: '批次下桌',
   tableHasPlayers: '仍有玩家在桌上（非休息），請先讓所有玩家下桌。',
   tableNotRunning: '請先運行開桌，再為玩家上桌。',
-  needMemberId: '請先輸入會員號碼再上桌。',
+  needMemberId: '請先輸入名稱或會員號碼再上桌。',
   duplicateMember: '同一位會員已在本桌其他位置上桌，請先處理座位移動。',
   batchNoSelection: '請先勾選要批次操作的席次。',
   batchMissingMember: '批次上桌的每個席次都必須先輸入會員號。',
@@ -247,7 +247,7 @@ const enTexts = {
   todayCount: 'Seat Count',
   restSeconds: 'Rest Seconds',
   buyIn: 'Total Buy-in',
-  memberId: 'Member ID',
+  memberId: 'Name / Member ID',
   batchLabel: 'Batch',
   btnSeat: 'Seat',
   btnRest: 'Rest',
@@ -257,7 +257,7 @@ const enTexts = {
   btnBatchLeave: 'Batch Leave',
   tableHasPlayers: 'There are still players seated (not resting). Please let them leave first.',
   tableNotRunning: 'Please start the table clock before seating players.',
-  needMemberId: 'Please enter a member ID before seating.',
+  needMemberId: 'Please enter a name or member ID before seating.',
   duplicateMember: 'This member is already seated at another position. Please handle seat move first.',
   batchNoSelection: 'Please select seats for batch operation first.',
   batchMissingMember: 'Every batch seat must have a member ID.',
@@ -289,6 +289,8 @@ const App: React.FC = () => {
   const [currentTableId, setCurrentTableId] = useState(1);
   const [lang, setLang] = useState<Lang>('zh');
   const [nowMs, setNowMs] = useState(Date.now());
+  const [names, setNames] = useState<Record<string,string>>({});
+  const withNames = (tbl: TableState): TableState => ({...tbl,seats:tbl.seats.map(seat=>seat.status === 'idle' ? {...seat,memberId:names[tbl.id+':'+seat.id] ?? seat.memberId}:seat)});
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -303,10 +305,10 @@ const App: React.FC = () => {
     () => tables.findIndex((tbl) => tbl.id === currentTableId),
     [tables, currentTableId],
   );
-  const currentTable = tables[currentTableIndex] ?? tables[0];
+  const currentTable = withNames(tables[currentTableIndex] ?? tables[0]);
 
   const updateTable = (tableId: number, updater: (t: TableState) => TableState) => {
-    setTables((prev) => prev.map((tbl) => (tbl.id === tableId ? updater(tbl) : tbl)));
+    setTables((prev) => prev.map((tbl) => (tbl.id === tableId ? updater(withNames(tbl)) : tbl)));
   };
 
   const hasActivePlayers = (tbl: TableState): boolean =>
@@ -498,11 +500,7 @@ const App: React.FC = () => {
   };
 
   const handleMemberChange = (seatId: number, value: string) => {
-    if (!currentTable) return;
-    updateTable(currentTable.id, (tbl) => ({
-      ...tbl,
-      seats: tbl.seats.map((s) => (s.id === seatId ? { ...s, memberId: value.trim() } : s)),
-    }));
+    setNames(prev=>({...prev,[currentTableId+':'+seatId]:value}));
   };
 
   const findSeatByMember = (tbl: TableState, memberId: string): SeatState | undefined => {
@@ -576,6 +574,14 @@ const App: React.FC = () => {
       return;
     }
 
+    if (seat.status === 'seated') return;
+    let buyIn = seat.buyInAmount;
+    if (seat.status === 'idle') {
+      const raw = window.prompt(lang === 'zh' ? '請輸入買碼金額（PHP，可為 0）' : 'Enter buy-in amount (PHP, can be 0)', '0');
+      if (raw === null) return;
+      if (!raw.trim() || !Number.isFinite(Number(raw)) || Number(raw) < 0) { window.alert(t.invalidNumber); return; }
+      buyIn = Number(raw);
+    }
     const existing = findSeatByMember(tbl, memberId);
     const now = Date.now();
 
@@ -644,6 +650,8 @@ const App: React.FC = () => {
           activeSeconds,
           restSeconds,
           sessionStart,
+          memberId,
+          buyInAmount: buyIn,
           transferNote: s.transferNote,
         };
       });
@@ -674,6 +682,10 @@ const App: React.FC = () => {
 
   const handleLeave = (seatId: number) => {
     if (!currentTable) return;
+    const leaving = currentTable.seats.find(s=>s.id===seatId);
+    if (!leaving || leaving.status === 'idle') return;
+    if (!window.confirm(lang === 'zh' ? `確認讓 ${leaving.memberId} 下桌？` : `Confirm ${leaving.memberId} leaves the table?`)) return;
+    setNames(prev=>({...prev,[currentTableId+':'+seatId]:''}));
     const now = Date.now();
     const endTimeStr = formatDateTime(new Date());
     updateTable(currentTable.id, (tbl) => {
@@ -1028,9 +1040,10 @@ const App: React.FC = () => {
                       <input
                         className="member-input"
                         placeholder={t.memberId}
-                        defaultValue={seat.memberId}
-                        key={seat.id + ':' + seat.memberId}
-                        onBlur={(e) => {if(e.target.value.trim() !== seat.memberId) handleMemberChange(seat.id, e.target.value);}}
+                        value={seat.memberId}
+                        disabled={seat.status !== 'idle'}
+                        maxLength={60}
+                        onChange={(e) => handleMemberChange(seat.id, e.target.value)}
                       />
                       <label className="batch-checkbox">
                         <input
