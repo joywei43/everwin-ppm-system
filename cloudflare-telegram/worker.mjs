@@ -10,7 +10,7 @@ const set=(db,key,value)=>db.prepare('INSERT INTO bot_settings VALUES(?,?) ON CO
 
 export async function source(fetcher=fetch) {
   const r=await fetcher(SOURCE,{headers:{Accept:'application/json','User-Agent':'EverestTelegramBot/2.0'},signal:AbortSignal.timeout(8000),cache:'no-store'});
-  if(!r.ok)throw new Error('SOURCE_UNAVAILABLE');
+  if(!r.ok)throw new Error('SOURCE_HTTP_'+r.status);
   const raw=await r.text();if(raw.length>200000)throw new Error('SOURCE_TOO_LARGE');
   return readTables(JSON.parse(raw).state);
 }
@@ -169,25 +169,41 @@ async function setup(req,env) {
   const cookie=(req.headers.get('Cookie')||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('__Host-everest_setup_csrf='))?.slice('__Host-everest_setup_csrf='.length)||'';
   if(!/^[a-f0-9]{64}$/.test(csrf)||!await same(csrf,cookie))return json({error:'設定頁已過期，請重新開啟 /setup 頁面後再試。'},403);
   if(!await same(fields.get('password')||'',env.SETUP_PASSWORD))return json({error:'設定密碼不正確'},401);
+  let stage='VERIFY_BOT';
+  try {
+  if(typeof env.DB.prepare!=='function')return json({error:'DB 不是 D1 資料庫綁定，請在 Bindings 加入 D1，名稱只填 DB。',stage:'DB_BINDING'},503);
   const me=await telegram(env,'getMe',{});
   if(!me.ok||me.result.username!==USERNAME)return json({error:'BOT_TOKEN 不正確，或不是 EverestPokerRoomBot。'},400);
+  stage='PPM_SOURCE';
   await source();
+  stage='DB_SCHEMA';
   for(const statement of SCHEMA.split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(statement).run();
+  stage='CHECK_WEBHOOK';
   const existing=await telegram(env,'getWebhookInfo',{});
   const url=new URL('/telegram',req.url).href;
   if(!existing.ok)return json({error:'無法查詢 Telegram webhook'},502);
   if(existing.result.url&&existing.result.url!==url)return json({error:'機器人已有其他雲端 webhook，尚未變更。'},409);
+  stage='CHECK_CHANNEL';
   const channel=await telegram(env,'getChat',{chat_id:'@MidoriPoker'});
   if(!channel.ok||channel.result.type!=='channel')return json({error:'無法讀取 @MidoriPoker 頻道。'},400);
   const member=await telegram(env,'getChatMember',{chat_id:channel.result.id,user_id:me.result.id});
   if(!member.ok||member.result.status!=='administrator'||!member.result.can_post_messages)return json({error:'請把機器人設為 @MidoriPoker 管理員並開啟發布訊息權限。'},400);
+  stage='SAVE_CHANNEL';
   const secret=await setting(env.DB,'webhook_secret')||crypto.randomUUID().replaceAll('-','');
   await env.DB.batch([set(env.DB,'webhook_secret',secret),env.DB.prepare("INSERT INTO bot_destinations VALUES(?,'channel',?) ON CONFLICT(id) DO UPDATE SET kind='channel',title=excluded.title").bind(String(channel.result.id),channel.result.title||'MidoriPoker')]);
+  stage='CONNECT_WEBHOOK';
   const result=await telegram(env,'setWebhook',{url,secret_token:secret,allowed_updates:['message','callback_query'],max_connections:1,drop_pending_updates:false});
   if(!result.ok)return json({error:'Telegram webhook 設定失敗，請稍後重試。'},502);
+  stage='SAVE_CONNECTION';
   await set(env.DB,'connected','1').run();
   await telegram(env,'setMyCommands',{commands:[{command:'tables',description:'Latest live tables'},{command:'subscribe',description:'Subscribe to table updates'},{command:'unsubscribe',description:'Stop table notifications'}]});
   return json({ok:true,message:'雲端已連接。先私訊 /subscribe，群組內傳 /connectgroup@EverestPokerRoomBot，最後私訊 /updateson。'});
+  }catch(e){
+    const hints={PPM_SOURCE:'讀取 PPM 桌況失敗。',DB_SCHEMA:'初始化 D1 資料庫失敗，請確認 DB 綁定的是新的 everest-telegram 資料庫。',SAVE_CHANNEL:'儲存頻道設定失敗。',SAVE_CONNECTION:'儲存連線狀態失敗。'};
+    const detail=/^SOURCE_HTTP_\d{3}$/.test(e?.message||'')?e.message:'SETUP_STEP_FAILED';
+    console.error('Setup failed at '+stage+' ('+detail+')');
+    return json({error:hints[stage]||'設定程序暫時失敗。',stage,code:detail},503);
+  }
 }
 
 export default {
@@ -199,7 +215,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.1',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.2',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);

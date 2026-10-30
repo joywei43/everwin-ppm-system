@@ -54,7 +54,7 @@ test('subscribe is private, opt-out and webhook replays are idempotent; booking 
   }finally{global.fetch=old;DB.sql.close();}
 });
 test('source failure never invents empty room or triggers closing message',async()=>{
-  await assert.rejects(()=>source(async()=>new Response('unavailable',{status:503})),/SOURCE_UNAVAILABLE/);
+  await assert.rejects(()=>source(async()=>new Response('unavailable',{status:503})),/SOURCE_HTTP_503/);
 });
 test('setup uses same-origin referrer policy and a secure form/cookie CSRF pair',async()=>{
   const r=await worker.fetch(new Request('https://example.workers.dev/setup'),{});
@@ -79,4 +79,35 @@ test('null/missing Origin is accepted only with CSRF; password remains mandatory
   assert.equal(forged.status,403);
   const noCsrf=await worker.fetch(new Request('https://example.workers.dev/setup',{method:'POST',body:new URLSearchParams({password:env.SETUP_PASSWORD})}),env);
   assert.equal(noCsrf.status,403);
+});
+async function setupRequest(env) {
+  const page=await worker.fetch(new Request('https://example.workers.dev/setup'),env);
+  const cookie=page.headers.get('Set-Cookie').split(';')[0];
+  const csrf=(await page.text()).match(/name="csrf" value="([a-f0-9]{64})"/)[1];
+  return new Request('https://example.workers.dev/setup',{method:'POST',headers:{Origin:'https://example.workers.dev',Cookie:cookie},body:new URLSearchParams({csrf,password:env.SETUP_PASSWORD})});
+}
+test('authenticated setup initializes schema and channel, sets webhook but does not enable broadcasts',async()=>{
+  const DB=db(),env={DB,BOT_TOKEN:'test',OWNER_ID:'1',SETUP_PASSWORD:'secure-test-password'},old=global.fetch;
+  const calls=[];
+  global.fetch=async(url,options)=>{
+    if(url.endsWith('/state'))return Response.json(state());
+    const method=url.split('/').at(-1);calls.push(method);
+    const result={getMe:{id:123,username:'EverestPokerRoomBot'},getWebhookInfo:{url:''},getChat:{id:-100,type:'channel',title:'MidoriPoker'},getChatMember:{status:'administrator',can_post_messages:true}}[method]??true;
+    return Response.json({ok:true,result});
+  };
+  try {
+    const r=await worker.fetch(await setupRequest(env),env);assert.equal(r.status,200);assert.equal((await r.json()).ok,true);
+    assert.ok(calls.includes('setWebhook'));assert.equal(DB.sql.prepare("SELECT value FROM bot_settings WHERE key='connected'").get().value,'1');
+    assert.equal(DB.sql.prepare("SELECT value FROM bot_settings WHERE key='enabled'").get(),undefined);
+    assert.equal(DB.sql.prepare('SELECT id FROM bot_destinations').get().id,'-100');
+  }finally{global.fetch=old;DB.sql.close();}
+});
+test('authenticated setup reports safe source/DB failure stages instead of opaque error',async()=>{
+  const DB=db(),env={DB,BOT_TOKEN:'test',OWNER_ID:'1',SETUP_PASSWORD:'secure-test-password'},old=global.fetch;
+  global.fetch=async url=>url.endsWith('/state')?new Response('private details',{status:503}):Response.json({ok:true,result:{id:123,username:'EverestPokerRoomBot'}});
+  try {
+    const r=await worker.fetch(await setupRequest(env),env);const b=await r.json();
+    assert.equal(b.stage,'PPM_SOURCE');assert.equal(b.code,'SOURCE_HTTP_503');assert.doesNotMatch(JSON.stringify(b),/private details/);
+    const wrong={...env,DB:'not-a-binding'};const bad=await worker.fetch(await setupRequest(wrong),wrong);assert.equal((await bad.json()).stage,'DB_BINDING');
+  }finally{global.fetch=old;DB.sql.close();}
 });
