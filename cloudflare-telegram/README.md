@@ -1,6 +1,6 @@
 # Everest Telegram cloud bot
 
-Status: implementation and local tests ready; not deployed or connected to Telegram.
+Status: implementation and local tests ready; production setup must be verified in the dashboard.
 This standalone Worker only reads the PPM public /state endpoint. It never writes PPM data.
 Reservations and queue calling have been removed. Players contact @midoripokerroom.
 
@@ -13,6 +13,8 @@ Reservations and queue calling have been removed. Players contact @midoripokerro
 3. Storage & databases → D1 → Create database `everest-telegram`.
 4. Open the Worker → Bindings → Add binding → D1 database. Variable name **DB**, database `everest-telegram`.
    Do not bind the existing PPM/waiting database. Schema initializes during authenticated setup.
+   Also add a **Service binding**: variable name `PPM_API`, service `everest-waiting-api` (Production).
+   This connects the bot directly to the existing PPM Worker without a compatibility flag.
 5. Worker → Settings → Variables and Secrets. Add:
 
 | Name | Type | Value |
@@ -39,7 +41,7 @@ Reservations and queue calling have been removed. Players contact @midoripokerro
 
 No Cloudflare API token or paid-plan upgrade is required for these dashboard steps.
 Do not place BOT_TOKEN or SETUP_PASSWORD in source code, GitHub, URLs, or chat.
-If using Wrangler/Git deployment later, add the D1 binding to the Wrangler configuration first;
+If using Wrangler/Git deployment later, add the D1 binding to the Wrangler configuration first (the PPM_API service binding is already configured);
 otherwise a deployment can remove dashboard-managed bindings.
 
 ## Commands

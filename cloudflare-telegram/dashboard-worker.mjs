@@ -72,8 +72,11 @@ const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Contr
 const setting=async(db,key,fallback='')=>(await db.prepare('SELECT value FROM bot_settings WHERE key=?').bind(key).first())?.value??fallback;
 const set=(db,key,value)=>db.prepare('INSERT INTO bot_settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,String(value));
 
-export async function source(fetcher=fetch) {
-  const r=await fetcher(SOURCE,{headers:{Accept:'application/json','User-Agent':'EverestTelegramBot/2.0'},signal:AbortSignal.timeout(8000),cache:'no-store'});
+export async function source(env={},fetcher=fetch) {
+  // Service bindings avoid public Worker-to-Worker routing restrictions.
+  if(env.PPM_API && typeof env.PPM_API.fetch!=='function')throw new Error('SOURCE_BINDING_INVALID');
+  const read=env.PPM_API ? (url,options)=>env.PPM_API.fetch(url,options) : fetcher;
+  const r=await read(SOURCE,{headers:{Accept:'application/json','User-Agent':'EverestTelegramBot/2.0'},signal:AbortSignal.timeout(8000),cache:'no-store'});
   if(!r.ok)throw new Error('SOURCE_HTTP_'+r.status);
   const raw=await r.text();if(raw.length>200000)throw new Error('SOURCE_TOO_LARGE');
   return readTables(JSON.parse(raw).state);
@@ -108,7 +111,7 @@ export async function poll(env) {
   await leased(db,async()=>{
     const time=now();
     if(await setting(db,'enabled')==='1') {
-      const tables=await source();
+      const tables=await source(env);
       const previous=JSON.parse((await db.prepare('SELECT data FROM bot_runtime WHERE id=1').first()).data);
       const event=transition(previous,tables,time);
       const sequence=(previous.sequence||0)+1;
@@ -186,7 +189,7 @@ export async function update(env,u) {
           reply(filter==='off'?'Table notifications stopped.':`Subscribed: ${filter}`);
         }else if(!q) {
           if(cmd==='/tables') {
-            try{reply(message(await source(),time));}catch{reply('Live tables are temporarily unavailable. Please check https://www.everestpokerroom.com/waiting-list/');}
+            try{reply(message(await source(env),time));}catch{reply('Live tables are temporarily unavailable. Please check https://www.everestpokerroom.com/waiting-list/');}
           }else if(privateChat&&['/subscribe','/start'].includes(cmd)) {
             reply('EVEREST POKER LIVE TABLES\n/tables — latest tables\n/subscribe — table notifications\n/unsubscribe — stop notifications\nContact : @midoripokerroom to reserve your seat',{reply_markup:menu});
           }else if(privateChat&&cmd==='/unsubscribe') {
@@ -198,7 +201,7 @@ export async function update(env,u) {
               statements.push(job(db,`connect:${u.update_id}`,who.id,'reply',`已連接群組：${m.chat.title||m.chat.id}`,time));
             }else statements.push(job(db,`connect:${u.update_id}`,who.id,'reply','請以群組管理員身分執行連接。',time));
           }else if(owner&&privateChat&&cmd==='/updateson') {
-            const tables=await source();
+            const tables=await source(env);
             // First enable deliberately seeds an empty baseline; >=5-player tables announce on next cron.
             const previous=JSON.parse((await db.prepare('SELECT data FROM bot_runtime WHERE id=1').first()).data);
             if(await setting(db,'enabled')!=='1')statements.push(db.prepare('UPDATE bot_runtime SET data=? WHERE id=1').bind(JSON.stringify({thankedDay:previous.thankedDay??null,sequence:previous.sequence||0})));
@@ -239,7 +242,7 @@ async function setup(req,env) {
   const me=await telegram(env,'getMe',{});
   if(!me.ok||me.result.username!==USERNAME)return json({error:'BOT_TOKEN 不正確，或不是 EverestPokerRoomBot。'},400);
   stage='PPM_SOURCE';
-  await source();
+  await source(env);
   stage='DB_SCHEMA';
   for(const statement of SCHEMA.split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(statement).run();
   stage='CHECK_WEBHOOK';
@@ -279,7 +282,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.2',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.3',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);

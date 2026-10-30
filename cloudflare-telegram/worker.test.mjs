@@ -54,7 +54,7 @@ test('subscribe is private, opt-out and webhook replays are idempotent; booking 
   }finally{global.fetch=old;DB.sql.close();}
 });
 test('source failure never invents empty room or triggers closing message',async()=>{
-  await assert.rejects(()=>source(async()=>new Response('unavailable',{status:503})),/SOURCE_HTTP_503/);
+  await assert.rejects(()=>source({},async()=>new Response('unavailable',{status:503})),/SOURCE_HTTP_503/);
 });
 test('setup uses same-origin referrer policy and a secure form/cookie CSRF pair',async()=>{
   const r=await worker.fetch(new Request('https://example.workers.dev/setup'),{});
@@ -111,3 +111,11 @@ test('authenticated setup reports safe source/DB failure stages instead of opaqu
     const wrong={...env,DB:'not-a-binding'};const bad=await worker.fetch(await setupRequest(wrong),wrong);assert.equal((await bad.json()).stage,'DB_BINDING');
   }finally{global.fetch=old;DB.sql.close();}
 });
+
+ test('PPM service binding reads /state without public fetch and preserves binding receiver',async()=>{
+  const PPM_API={async fetch(url,options){assert.equal(this,PPM_API);assert.equal(new URL(url).pathname,'/state');assert.equal(options.headers.Accept,'application/json');return Response.json(state(7));}};
+  const tables=await source({PPM_API},async()=>{throw new Error('public fetch must not run');});
+  assert.equal(tables[0].players,7);
+  await assert.rejects(()=>source({PPM_API:{}}),/SOURCE_BINDING_INVALID/);
+  await assert.rejects(()=>source({PPM_API:{fetch:async()=>new Response('',{status:503})}}),/SOURCE_HTTP_503/);
+ });
