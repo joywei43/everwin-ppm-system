@@ -220,14 +220,19 @@ export async function update(env,u) {
   if(!success)throw new Error('BUSY');
 }
 
-const setupPage=`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Everest Telegram Setup</title><style>body{font:17px system-ui;max-width:650px;margin:60px auto;padding:24px;color:#143d32}input,button{font:inherit;padding:12px;margin:8px 0;width:100%;box-sizing:border-box}button{background:#174c3e;color:white;border:0;border-radius:6px}</style><h1>Everest Telegram 雲端設定</h1><p>先停止 Mac 上的 bot.py，再按下連接。完成後，私訊機器人 /subscribe；在玩家群組傳 /connectgroup@EverestPokerRoomBot；最後私訊 /updateson。</p><form method="post" action="/setup"><label>Cloudflare SETUP_PASSWORD<input type="password" name="password" autocomplete="off" required></label><button>連接 Telegram（暫不啟用自動推播）</button></form></html>`;
+const setupPage=`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Everest Telegram Setup</title><style>body{font:17px system-ui;max-width:650px;margin:60px auto;padding:24px;color:#143d32}input,button{font:inherit;padding:12px;margin:8px 0;width:100%;box-sizing:border-box}button{background:#174c3e;color:white;border:0;border-radius:6px}</style><h1>Everest Telegram 雲端設定</h1><p>先停止 Mac 上的 bot.py，再按下連接。完成後，私訊機器人 /subscribe；在玩家群組傳 /connectgroup@EverestPokerRoomBot；最後私訊 /updateson。</p><form method="post" action="/setup"><input type="hidden" name="csrf" value="{{CSRF}}"><label>Cloudflare SETUP_PASSWORD<input type="password" name="password" autocomplete="off" required></label><button>連接 Telegram（暫不啟用自動推播）</button></form></html>`;
 
 async function setup(req,env) {
   if(!env.DB||!env.BOT_TOKEN||!env.OWNER_ID||!env.SETUP_PASSWORD||env.SETUP_PASSWORD.length<16)return json({error:'請先設定 DB、BOT_TOKEN、OWNER_ID 及至少16字元的 SETUP_PASSWORD。'},503);
-  if(req.headers.get('Origin')!==new URL(req.url).origin)return json({error:'Invalid origin'},403);
+  const origin=req.headers.get('Origin');
+  if(origin && origin!=='null' && origin!==new URL(req.url).origin)return json({error:'請從此 Worker 的 /setup 頁面提交設定。'},403);
   if(Number(req.headers.get('Content-Length'))>4096)return json({error:'Too large'},413);
   const raw=await req.text();if(raw.length>4096)return json({error:'Too large'},413);
-  if(!await same(new URLSearchParams(raw).get('password')||'',env.SETUP_PASSWORD))return json({error:'設定密碼不正確'},401);
+  const fields=new URLSearchParams(raw);
+  const csrf=fields.get('csrf')||'';
+  const cookie=(req.headers.get('Cookie')||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('__Host-everest_setup_csrf='))?.slice('__Host-everest_setup_csrf='.length)||'';
+  if(!/^[a-f0-9]{64}$/.test(csrf)||!await same(csrf,cookie))return json({error:'設定頁已過期，請重新開啟 /setup 頁面後再試。'},403);
+  if(!await same(fields.get('password')||'',env.SETUP_PASSWORD))return json({error:'設定密碼不正確'},401);
   const me=await telegram(env,'getMe',{});
   if(!me.ok||me.result.username!==USERNAME)return json({error:'BOT_TOKEN 不正確，或不是 EverestPokerRoomBot。'},400);
   await source();
@@ -253,9 +258,12 @@ export default {
   async fetch(req,env) {
     const path=new URL(req.url).pathname;
     try {
-      if(path==='/setup'&&req.method==='GET')return new Response(setupPage,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'no-referrer'}});
+      if(path==='/setup'&&req.method==='GET') {
+        const csrf=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
+        return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
+      }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.1',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);

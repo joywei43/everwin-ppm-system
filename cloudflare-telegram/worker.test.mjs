@@ -56,3 +56,27 @@ test('subscribe is private, opt-out and webhook replays are idempotent; booking 
 test('source failure never invents empty room or triggers closing message',async()=>{
   await assert.rejects(()=>source(async()=>new Response('unavailable',{status:503})),/SOURCE_UNAVAILABLE/);
 });
+test('setup uses same-origin referrer policy and a secure form/cookie CSRF pair',async()=>{
+  const r=await worker.fetch(new Request('https://example.workers.dev/setup'),{});
+  assert.equal(r.headers.get('Referrer-Policy'),'same-origin');
+  assert.match(r.headers.get('Set-Cookie'),/Secure; HttpOnly; SameSite=Strict/);
+  const html=await r.text();
+  const token=html.match(/name="csrf" value="([a-f0-9]{64})"/)[1];
+  assert.match(r.headers.get('Set-Cookie'),new RegExp('='+token+';'));
+});
+test('null/missing Origin is accepted only with CSRF; password remains mandatory',async()=>{
+  const env={DB:{},BOT_TOKEN:'test',OWNER_ID:'1',SETUP_PASSWORD:'secure-test-password'};
+  const page=await worker.fetch(new Request('https://example.workers.dev/setup'),env);
+  const cookie=page.headers.get('Set-Cookie').split(';')[0];
+  const csrf=(await page.text()).match(/name="csrf" value="([a-f0-9]{64})"/)[1];
+  for(const origin of ['null',null]) {
+    const headers={'Content-Type':'application/x-www-form-urlencoded',Cookie:cookie};
+    if(origin)headers.Origin=origin;
+    const r=await worker.fetch(new Request('https://example.workers.dev/setup',{method:'POST',headers,body:new URLSearchParams({csrf,password:'wrong'})}),env);
+    assert.equal(r.status,401);assert.match((await r.json()).error,/密碼/);
+  }
+  const forged=await worker.fetch(new Request('https://example.workers.dev/setup',{method:'POST',headers:{Origin:'https://evil.example',Cookie:cookie},body:new URLSearchParams({csrf,password:env.SETUP_PASSWORD})}),env);
+  assert.equal(forged.status,403);
+  const noCsrf=await worker.fetch(new Request('https://example.workers.dev/setup',{method:'POST',body:new URLSearchParams({password:env.SETUP_PASSWORD})}),env);
+  assert.equal(noCsrf.status,403);
+});
