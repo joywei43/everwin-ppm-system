@@ -1,0 +1,10 @@
+{
+  "name": "everest-telegram-bot",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-30",
+  "workers_dev": true,
+  "triggers": {"crons": ["* * * * *"]},
+  "vars": {"OWNER_ID": "8136216181"}
+  // For CLI deployment add a d1_databases binding named DB with your database ID.
+  // Dashboard deployment: bind DB in Settings/Bindings and add BOT_TOKEN + SETUP_PASSWORD as Secrets.
+}
