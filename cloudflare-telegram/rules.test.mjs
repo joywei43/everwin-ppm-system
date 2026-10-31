@@ -25,7 +25,7 @@ test('closure stops periodic; reopening waits again; state survives restart', ()
   let r=transition({},[table(5)],100);
   r=transition(JSON.parse(JSON.stringify(r.state)),[table(0,false)],4000);
   assert.equal(r.channel,null); assert.equal(r.group,null);
-  r=transition(r.state,[table(3)],4010); assert.equal(r.channel.reason,'periodic');
+  r=transition(r.state,[table(3)],4010); assert.equal(r.channel,null); assert.equal(r.group,null);
   r=transition(r.state,[table(5)],4020); assert.equal(r.channel.reason,'new-table');
 });
 test('validates public data and uses Philippine time', () => {
@@ -55,4 +55,17 @@ test('no thanks before 04:00, no delayed thanks, no startup or partial closure t
   r=transition(r.state,[table(0,false),table(5,true,'T2')],localTime(30,3,30)); assert.equal(r.common,null);
   r=transition(r.state,[table(0,false),table(0,false,'T2')],localTime(30,3,59)); assert.equal(r.common,null);
   r=transition(r.state,[table(0,false),table(0,false,'T2')],localTime(30,4)); assert.equal(r.common,null);
+});
+
+test('overdue periodic updates never publish below five, including next-day reopening',()=>{
+  const previous={tables:[table(8)],ready:['T1'],groupAt:100,channelAt:100};
+  for(const players of [0,1,4]){
+    const r=transition(previous,[table(players)],10000);
+    assert.equal(r.group,null);assert.equal(r.channel,null);
+  }
+  const r=transition(previous,[table(5)],10000);
+  assert.equal(r.group.reason,'periodic');assert.equal(r.channel.reason,'periodic');
+  const text=message([table(0),table(5,true,'T2')],10000,{minPlayers:5});
+  assert.doesNotMatch(text,/T1 ·/);assert.match(text,/T2 ·/);
+  assert.match(message([table(0)],10000),/0\/9 players/); // Explicit queries remain truthful.
 });

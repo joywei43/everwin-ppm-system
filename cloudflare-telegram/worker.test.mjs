@@ -119,3 +119,25 @@ test('authenticated setup reports safe source/DB failure stages instead of opaqu
   await assert.rejects(()=>source({PPM_API:{}}),/SOURCE_BINDING_INVALID/);
   await assert.rejects(()=>source({PPM_API:{fetch:async()=>new Response('',{status:503})}}),/SOURCE_HTTP_503/);
  });
+
+test('automatic posts stop below five and stale retries are cancelled without advancing clocks',async()=>{
+  const DB=db(),env={DB,BOT_TOKEN:'test',OWNER_ID:'1'},old=global.fetch;
+  DB.sql.exec("INSERT INTO bot_settings VALUES('connected','1'),('enabled','1'); INSERT INTO bot_destinations VALUES('-1','group','Players'),('-2','channel','Midori');");
+  let live=state(5),accepted=false;const sent=[];
+  global.fetch=async(url,options)=>{
+    if(url.endsWith('/state'))return Response.json(live);
+    sent.push(JSON.parse(options.body));return Response.json(accepted?{ok:true,result:{message_id:1}}:{ok:false,error_code:429,parameters:{retry_after:5}});
+  };
+  try{
+    await poll(env);assert.equal(sent.length,1);
+    DB.sql.exec("UPDATE bot_jobs SET due=0");live=state(0);accepted=true;
+    await poll(env);assert.equal(sent.length,1);
+    assert.equal(DB.sql.prepare("SELECT COUNT(*) n FROM bot_jobs WHERE stream IN ('group','channel') AND status='cancelled'").get().n,2);
+    assert.equal(runtime(DB).groupAt,null);assert.equal(runtime(DB).channelAt,null);
+    const previous=runtime(DB);previous.groupAt=1;previous.channelAt=1;
+    DB.sql.prepare('UPDATE bot_runtime SET data=?').run(JSON.stringify(previous));
+    live=state(4);await poll(env);assert.equal(sent.length,1);
+    live=state(5);await poll(env);assert.equal(sent.length,3);
+    assert.ok(sent.slice(1).every(p=>p.text.includes('5/9 players')));
+  }finally{global.fetch=old;DB.sql.close();}
+});

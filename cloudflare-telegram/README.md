@@ -59,7 +59,9 @@ No booking, arrival, seat-hold or calling commands.
   Decreases do not interrupt. Otherwise 30 minutes from last accepted notification.
 - Full at 9/9 → a single full-table channel notification; add second-table reservation copy only
   if no other open table has the same game and stakes.
-- No periodic broadcasts while all tables are closed.
+- All automatic table posts (including periodic updates) require at least five current players per listed table.
+  Lower-occupancy tables are omitted; if none qualify, no table post is sent. Explicit /tables queries still show all open tables.
+  Queued snapshots are cancelled if a listed table closes or drops below five before delivery.
 - Last table closes at/after 04:00 GMT+8: the user's exact thank-you copy goes to all configured
   destinations and opted-in subscribers, once per local calendar date. No delayed 04:00 broadcast
   for a room that closed earlier. Initial empty snapshots never trigger thanks.

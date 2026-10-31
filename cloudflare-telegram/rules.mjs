@@ -33,12 +33,13 @@ export function transition(previous = {}, tables, now) {
     }
   }
   const active = tables.some(t => t.open);
+  const publishable = tables.some(t => t.open && t.players >= 5);
   const local = new Date((now + 8 * 3600) * 1000);
   const closingDay = local.toISOString().slice(0, 10);
   const lastTableClosed = before.some(t => t.open) && !active;
   const thankYou = lastTableClosed && local.getUTCHours() >= 4 && previous.thankedDay !== closingDay;
-  const groupDue = active && (newlyReady.length > 0 || (previous.groupAt != null && now - previous.groupAt >= 3600));
-  const channelDue = active && (newlyReady.length > 0 || increases.length > 0 || (previous.channelAt != null && now - previous.channelAt >= 1800));
+  const groupDue = publishable && (newlyReady.length > 0 || (previous.groupAt != null && now - previous.groupAt >= 3600));
+  const channelDue = publishable && (newlyReady.length > 0 || increases.length > 0 || (previous.channelAt != null && now - previous.channelAt >= 1800));
   return {
     // Common event, delivered once to each distinct configured destination.
     common: thankYou ? { reason: 'last-table-closed', key: `thanks:${closingDay}`, text: THANK_YOU } : null,
@@ -48,11 +49,11 @@ export function transition(previous = {}, tables, now) {
   };
 }
 
-export function message(tables, now, { filter = 'all', full = [] } = {}) {
+export function message(tables, now, { filter = 'all', full = [], minPlayers = 0 } = {}) {
   const date = new Date(now * 1000);
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Manila', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(p => [p.type,p.value]));
   const lines = ['EVEREST POKER LIVE TABLES', `TIME: ${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`, ''];
-  const selected = tables.filter(t => t.open && (filter === 'all' || t.game === filter));
+  const selected = tables.filter(t => t.open && t.players >= minPlayers && (filter === 'all' || t.game === filter));
   for (const t of selected) {
     lines.push(`${t.id} · ${t.game} ${t.stakes} · ${t.players}/${t.capacity} players${full.includes(t.id) ? ' · TABLE FULL' : ''}`);
   }

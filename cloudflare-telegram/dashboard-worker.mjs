@@ -33,12 +33,13 @@ export function transition(previous = {}, tables, now) {
     }
   }
   const active = tables.some(t => t.open);
+  const publishable = tables.some(t => t.open && t.players >= 5);
   const local = new Date((now + 8 * 3600) * 1000);
   const closingDay = local.toISOString().slice(0, 10);
   const lastTableClosed = before.some(t => t.open) && !active;
   const thankYou = lastTableClosed && local.getUTCHours() >= 4 && previous.thankedDay !== closingDay;
-  const groupDue = active && (newlyReady.length > 0 || (previous.groupAt != null && now - previous.groupAt >= 3600));
-  const channelDue = active && (newlyReady.length > 0 || increases.length > 0 || (previous.channelAt != null && now - previous.channelAt >= 1800));
+  const groupDue = publishable && (newlyReady.length > 0 || (previous.groupAt != null && now - previous.groupAt >= 3600));
+  const channelDue = publishable && (newlyReady.length > 0 || increases.length > 0 || (previous.channelAt != null && now - previous.channelAt >= 1800));
   return {
     // Common event, delivered once to each distinct configured destination.
     common: thankYou ? { reason: 'last-table-closed', key: `thanks:${closingDay}`, text: THANK_YOU } : null,
@@ -48,11 +49,11 @@ export function transition(previous = {}, tables, now) {
   };
 }
 
-export function message(tables, now, { filter = 'all', full = [] } = {}) {
+export function message(tables, now, { filter = 'all', full = [], minPlayers = 0 } = {}) {
   const date = new Date(now * 1000);
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Manila', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(p => [p.type,p.value]));
   const lines = ['EVEREST POKER LIVE TABLES', `TIME: ${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`, ''];
-  const selected = tables.filter(t => t.open && (filter === 'all' || t.game === filter));
+  const selected = tables.filter(t => t.open && t.players >= minPlayers && (filter === 'all' || t.game === filter));
   for (const t of selected) {
     lines.push(`${t.id} · ${t.game} ${t.stakes} · ${t.players}/${t.capacity} players${full.includes(t.id) ? ' · TABLE FULL' : ''}`);
   }
@@ -132,13 +133,13 @@ export async function poll(env) {
       const eligible=(e,stream)=>e && (e.reason!=='periodic'||!pending.includes(stream));
       if(eligible(event.group,'group')) {
         for(const r of subscribers) {
-          if(!tables.some(t=>t.open&&(r.filter==='all'||r.filter===t.game)))continue;
+          if(!tables.some(t=>t.open&&t.players>=5&&(r.filter==='all'||r.filter===t.game)))continue;
           if(event.group.reason==='new-table'&&!tables.some(t=>event.group.tables.includes(t.id)&&(r.filter==='all'||r.filter===t.game)))continue;
-          statements.push(job(db,`group:${sequence}:${r.id}`,r.id,'group',message(tables,time,{filter:r.filter}),time));
+          statements.push(job(db,`group:${sequence}:${r.id}`,r.id,'group',message(tables,time,{filter:r.filter,minPlayers:5}),time));
         }
-        for(const r of destinations.filter(r=>r.kind==='group'))statements.push(job(db,`group:${sequence}:${r.id}`,r.id,'group',message(tables,time),time));
+        for(const r of destinations.filter(r=>r.kind==='group'))statements.push(job(db,`group:${sequence}:${r.id}`,r.id,'group',message(tables,time,{minPlayers:5}),time));
       }
-      if(eligible(event.channel,'channel'))for(const r of destinations.filter(r=>r.kind==='channel'))statements.push(job(db,`channel:${sequence}:${r.id}`,r.id,'channel',message(tables,time,event.channel),time));
+      if(eligible(event.channel,'channel'))for(const r of destinations.filter(r=>r.kind==='channel'))statements.push(job(db,`channel:${sequence}:${r.id}`,r.id,'channel',message(tables,time,{...event.channel,minPlayers:5}),time));
       statements.push(db.prepare('UPDATE bot_runtime SET data=? WHERE id=1').bind(JSON.stringify(event.state)));
       await db.batch(statements);
     }
@@ -155,7 +156,16 @@ async function flush(env) {
     if(time-r.created>(r.stream==='common'?21600:1800)) {
       await db.prepare("UPDATE bot_jobs SET status='expired' WHERE id=?").bind(r.id).run();continue;
     }
-    const result=await telegram(env,r.method,JSON.parse(r.payload));
+    const payload=JSON.parse(r.payload);
+    if(['group','channel'].includes(r.stream)) {
+      const snapshot=JSON.parse((await db.prepare('SELECT data FROM bot_runtime WHERE id=1').first()).data);
+      const listed=[...payload.text.matchAll(/^(T[1235]) ·/gm)].map(m=>m[1]);
+      // Cancel stale queued snapshots when a listed table drops below the threshold.
+      if(!listed.length || listed.some(id=>!snapshot.tables?.some(t=>t.id===id&&t.open&&t.players>=5))) {
+        await db.prepare("UPDATE bot_jobs SET status='cancelled' WHERE id=?").bind(r.id).run();continue;
+      }
+    }
+    const result=await telegram(env,r.method,payload);
     if(result.ok) {
       const updates=[db.prepare("UPDATE bot_jobs SET status='sent',error=NULL WHERE id=?").bind(r.id)];
       if(['group','channel'].includes(r.stream))updates.push(db.prepare(`UPDATE bot_runtime SET data=json_set(data,'$.${r.stream}At',?) WHERE id=1`).bind(now()));
@@ -282,7 +292,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.3',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.4',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);
