@@ -49,12 +49,13 @@ test('last table closing at or after 04:00 GMT+8 emits exact common thank-you', 
   r=transition(r.state,[table(0,false)],localTime(31,4));
   assert.equal(r.common.key,'thanks:2026-10-31');
 });
-test('no thanks before 04:00, no delayed thanks, no startup or partial closure thanks', () => {
+test('pre-04:00 closure waits until 04:00; startup and partial closure never thank', () => {
   let r=transition({},[table(0,false)],localTime(30,5)); assert.equal(r.common,null);
   r=transition(r.state,[table(5),table(5,true,'T2')],localTime(30,3));
   r=transition(r.state,[table(0,false),table(5,true,'T2')],localTime(30,3,30)); assert.equal(r.common,null);
   r=transition(r.state,[table(0,false),table(0,false,'T2')],localTime(30,3,59)); assert.equal(r.common,null);
-  r=transition(r.state,[table(0,false),table(0,false,'T2')],localTime(30,4)); assert.equal(r.common,null);
+  r=transition(JSON.parse(JSON.stringify(r.state)),[table(0,false),table(0,false,'T2')],localTime(30,4)); assert.equal(r.common.text,THANK_YOU);
+  r=transition(r.state,[table(0,false),table(0,false,'T2')],localTime(30,4,1)); assert.equal(r.common,null);
 });
 
 test('overdue periodic updates never publish below five, including next-day reopening',()=>{
@@ -68,4 +69,18 @@ test('overdue periodic updates never publish below five, including next-day reop
   const text=message([table(0),table(5,true,'T2')],10000,{minPlayers:5});
   assert.doesNotMatch(text,/T1 ·/);assert.match(text,/T2 ·/);
   assert.match(message([table(0)],10000),/0\/9 players/); // Explicit queries remain truthful.
+});
+
+test('reopening before 04:00 cancels waiting thanks until the last table closes again',()=>{
+  let r=transition({},[table(5)],localTime(30,2));
+  r=transition(r.state,[table(0,false)],localTime(30,3));assert.equal(r.state.pendingThanksDay,'2026-10-30');
+  r=transition(r.state,[table(1)],localTime(30,3,30));assert.equal(r.state.pendingThanksDay,null);
+  r=transition(r.state,[table(1)],localTime(30,4));assert.equal(r.common,null);
+  r=transition(r.state,[table(0,false)],localTime(30,4,15));assert.equal(r.common.text,THANK_YOU);
+});
+test('missed exact 04:00 tick sends later that morning and expired pending closures never thank next day',()=>{
+  let r=transition({},[table(5)],localTime(30,2));
+  r=transition(r.state,[table(0,false)],localTime(30,3));const waiting=r.state;
+  r=transition(JSON.parse(JSON.stringify(waiting)),[table(0,false)],localTime(30,4,3));assert.equal(r.common.text,THANK_YOU);
+  r=transition(waiting,[table(0,false)],localTime(31,4));assert.equal(r.common,null);
 });

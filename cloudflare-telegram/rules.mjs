@@ -37,7 +37,12 @@ export function transition(previous = {}, tables, now) {
   const local = new Date((now + 8 * 3600) * 1000);
   const closingDay = local.toISOString().slice(0, 10);
   const lastTableClosed = before.some(t => t.open) && !active;
-  const thankYou = lastTableClosed && local.getUTCHours() >= 4 && previous.thankedDay !== closingDay;
+  // A closure before 04:00 persists until the first successful poll at/after 04:00.
+  let pendingThanksDay = previous.pendingThanksDay === closingDay ? closingDay : null;
+  if (active) pendingThanksDay = null;
+  else if (lastTableClosed) pendingThanksDay = closingDay;
+  const thankYou = !active && pendingThanksDay === closingDay && local.getUTCHours() >= 4 && previous.thankedDay !== closingDay;
+  if (thankYou || previous.thankedDay === closingDay) pendingThanksDay = null;
   const groupDue = publishable && (newlyReady.length > 0 || (previous.groupAt != null && now - previous.groupAt >= 3600));
   const channelDue = publishable && (newlyReady.length > 0 || increases.length > 0 || (previous.channelAt != null && now - previous.channelAt >= 1800));
   return {
@@ -45,7 +50,7 @@ export function transition(previous = {}, tables, now) {
     common: thankYou ? { reason: 'last-table-closed', key: `thanks:${closingDay}`, text: THANK_YOU } : null,
     group: groupDue ? { reason: newlyReady.length ? 'new-table' : 'periodic', tables: newlyReady } : null,
     channel: channelDue ? { reason: full.length ? 'full' : newlyReady.length ? 'new-table' : increases.length ? 'increase' : 'periodic', tables: [...newlyReady, ...increases], full } : null,
-    state: { tables, pending: [...pending], ready: [...ready], groupAt: groupDue ? now : previous.groupAt ?? null, channelAt: channelDue ? now : previous.channelAt ?? null, thankedDay: thankYou ? closingDay : previous.thankedDay ?? null }
+    state: { tables, pendingThanksDay, pending: [...pending], ready: [...ready], groupAt: groupDue ? now : previous.groupAt ?? null, channelAt: channelDue ? now : previous.channelAt ?? null, thankedDay: thankYou ? closingDay : previous.thankedDay ?? null }
   };
 }
 

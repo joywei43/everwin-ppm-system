@@ -62,9 +62,10 @@ No booking, arrival, seat-hold or calling commands.
 - All automatic table posts (including periodic updates) require at least five current players per listed table.
   Lower-occupancy tables are omitted; if none qualify, no table post is sent. Explicit /tables queries still show all open tables.
   Queued snapshots are cancelled if a listed table closes or drops below five before delivery.
-- Last table closes at/after 04:00 GMT+8: the user's exact thank-you copy goes to all configured
-  destinations and opted-in subscribers, once per local calendar date. No delayed 04:00 broadcast
-  for a room that closed earlier. Initial empty snapshots never trigger thanks.
+- Last table closes before 04:00 GMT+8: persist a pending thank-you and send at the first poll at/after 04:00 that day.
+  If the last table closes at/after 04:00, send after closure. Reopening cancels the pending closure until all tables close again.
+  The user's exact thank-you copy goes to all configured destinations and opted-in subscribers, once per local calendar date.
+  Initial empty snapshots and pending closures left over from an earlier calendar date never trigger thanks.
 - One timestamp in Philippine time; no TEST labels, held counts, or seating disclaimer.
 - Source is checked every minute, so changes can take approximately one minute to appear. Changes
   that happen and reverse between polls may not be observed.

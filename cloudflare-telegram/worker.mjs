@@ -149,7 +149,7 @@ export async function update(env,u) {
             const tables=await source(env);
             // First enable deliberately seeds an empty baseline; >=5-player tables announce on next cron.
             const previous=JSON.parse((await db.prepare('SELECT data FROM bot_runtime WHERE id=1').first()).data);
-            if(await setting(db,'enabled')!=='1')statements.push(db.prepare('UPDATE bot_runtime SET data=? WHERE id=1').bind(JSON.stringify({thankedDay:previous.thankedDay??null,sequence:previous.sequence||0})));
+            if(await setting(db,'enabled')!=='1')statements.push(db.prepare('UPDATE bot_runtime SET data=? WHERE id=1').bind(JSON.stringify({pendingThanksDay:previous.pendingThanksDay??null,thankedDay:previous.thankedDay??null,sequence:previous.sequence||0})));
             statements.push(set(db,'enabled','1'));reply(`雲端推播已啟用，目前 ${tables.filter(t=>t.open).length} 桌。`);
           }else if(owner&&privateChat&&cmd==='/updatesoff') {statements.push(set(db,'enabled','0'));statements.push(db.prepare("UPDATE bot_jobs SET status='cancelled' WHERE status='pending' AND stream IN ('group','channel','common')"));reply('雲端自動推播已暫停，/tables 仍可查詢。');
           }else if(owner&&privateChat&&cmd==='/status') {
@@ -227,7 +227,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.4',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.5',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);

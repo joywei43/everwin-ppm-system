@@ -37,7 +37,12 @@ export function transition(previous = {}, tables, now) {
   const local = new Date((now + 8 * 3600) * 1000);
   const closingDay = local.toISOString().slice(0, 10);
   const lastTableClosed = before.some(t => t.open) && !active;
-  const thankYou = lastTableClosed && local.getUTCHours() >= 4 && previous.thankedDay !== closingDay;
+  // A closure before 04:00 persists until the first successful poll at/after 04:00.
+  let pendingThanksDay = previous.pendingThanksDay === closingDay ? closingDay : null;
+  if (active) pendingThanksDay = null;
+  else if (lastTableClosed) pendingThanksDay = closingDay;
+  const thankYou = !active && pendingThanksDay === closingDay && local.getUTCHours() >= 4 && previous.thankedDay !== closingDay;
+  if (thankYou || previous.thankedDay === closingDay) pendingThanksDay = null;
   const groupDue = publishable && (newlyReady.length > 0 || (previous.groupAt != null && now - previous.groupAt >= 3600));
   const channelDue = publishable && (newlyReady.length > 0 || increases.length > 0 || (previous.channelAt != null && now - previous.channelAt >= 1800));
   return {
@@ -45,7 +50,7 @@ export function transition(previous = {}, tables, now) {
     common: thankYou ? { reason: 'last-table-closed', key: `thanks:${closingDay}`, text: THANK_YOU } : null,
     group: groupDue ? { reason: newlyReady.length ? 'new-table' : 'periodic', tables: newlyReady } : null,
     channel: channelDue ? { reason: full.length ? 'full' : newlyReady.length ? 'new-table' : increases.length ? 'increase' : 'periodic', tables: [...newlyReady, ...increases], full } : null,
-    state: { tables, pending: [...pending], ready: [...ready], groupAt: groupDue ? now : previous.groupAt ?? null, channelAt: channelDue ? now : previous.channelAt ?? null, thankedDay: thankYou ? closingDay : previous.thankedDay ?? null }
+    state: { tables, pendingThanksDay, pending: [...pending], ready: [...ready], groupAt: groupDue ? now : previous.groupAt ?? null, channelAt: channelDue ? now : previous.channelAt ?? null, thankedDay: thankYou ? closingDay : previous.thankedDay ?? null }
   };
 }
 
@@ -214,7 +219,7 @@ export async function update(env,u) {
             const tables=await source(env);
             // First enable deliberately seeds an empty baseline; >=5-player tables announce on next cron.
             const previous=JSON.parse((await db.prepare('SELECT data FROM bot_runtime WHERE id=1').first()).data);
-            if(await setting(db,'enabled')!=='1')statements.push(db.prepare('UPDATE bot_runtime SET data=? WHERE id=1').bind(JSON.stringify({thankedDay:previous.thankedDay??null,sequence:previous.sequence||0})));
+            if(await setting(db,'enabled')!=='1')statements.push(db.prepare('UPDATE bot_runtime SET data=? WHERE id=1').bind(JSON.stringify({pendingThanksDay:previous.pendingThanksDay??null,thankedDay:previous.thankedDay??null,sequence:previous.sequence||0})));
             statements.push(set(db,'enabled','1'));reply(`雲端推播已啟用，目前 ${tables.filter(t=>t.open).length} 桌。`);
           }else if(owner&&privateChat&&cmd==='/updatesoff') {statements.push(set(db,'enabled','0'));statements.push(db.prepare("UPDATE bot_jobs SET status='cancelled' WHERE status='pending' AND stream IN ('group','channel','common')"));reply('雲端自動推播已暫停，/tables 仍可查詢。');
           }else if(owner&&privateChat&&cmd==='/status') {
@@ -292,7 +297,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.4',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.5',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);
