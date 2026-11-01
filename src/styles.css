@@ -566,3 +566,12 @@ html {
   justify-content: space-between;
   gap: 12px;
 }
+
+/* Member lookup under the seat name box */
+.member-ac { position: relative; flex: 1; min-width: 0; }
+.member-ac-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;
+  background: #0f172a; border: 1px solid rgba(148,163,184,0.5); border-radius: 10px; box-shadow: 0 10px 24px rgba(0,0,0,0.45); max-height: 220px; overflow: auto; min-width: 200px; }
+.member-ac-list button { width: 100%; text-align: left; background: none; border: 0; color: var(--text-main); padding: 6px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.member-ac-list button:hover, .member-ac-list button.active { background: rgba(59,130,246,0.25); }
+.member-ac-no { font-weight: 700; }
+.member-ac-sub { display: block; font-size: 11px; opacity: 0.75; }
