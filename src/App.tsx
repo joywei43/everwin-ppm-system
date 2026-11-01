@@ -1,4 +1,5 @@
 import Queue from './Queue';
+import MemberInput from './MemberInput';
 import { useCloudTables, CloudLogin } from './cloud';
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -188,7 +189,7 @@ const zhTexts = {
   todayCount: '本局上桌次數',
   restSeconds: '休息秒數',
   buyIn: '買碼總額',
-  memberId: '名稱 / 會員號碼',
+  memberId: '會員號碼或暱稱',
   batchLabel: '批次',
   btnSeat: '上桌',
   btnRest: '休息',
@@ -247,7 +248,7 @@ const enTexts = {
   todayCount: 'Seat Count',
   restSeconds: 'Rest Seconds',
   buyIn: 'Total Buy-in',
-  memberId: 'Name / Member ID',
+  memberId: 'Member no. or nickname',
   batchLabel: 'Batch',
   btnSeat: 'Seat',
   btnRest: 'Rest',
@@ -1037,12 +1038,10 @@ const App: React.FC = () => {
                       </button>
                     </div>
                     <div className="seat-extra-row">
-                      <input
-                        className="member-input"
+                      <MemberInput
                         placeholder={t.memberId}
                         value={seat.memberId}
                         disabled={seat.status !== 'idle'}
-                        maxLength={60}
                         onChange={(e) => handleMemberChange(seat.id, e.target.value)}
                       />
                       <label className="batch-checkbox">

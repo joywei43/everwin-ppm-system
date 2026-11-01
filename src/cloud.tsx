@@ -60,3 +60,16 @@ export function CloudLogin({cloud}:{cloud:ReturnType<typeof useCloudTables>}) {
   const [password,setPassword]=useState('');
   return <main style={{maxWidth:420,margin:'60px auto',padding:24}}><h1>Everwin PPM</h1><p>Staff sign in · admin01</p><form onSubmit={e=>{e.preventDefault();cloud.login(password);}}><input aria-label="Password" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/><button disabled={cloud.busy}>Sign in</button></form><p role="alert">{cloud.message}</p></main>;
 }
+
+export interface MemberHit { member_no: string; name: string; nickname: string; group_name: string | null; status: string; }
+// Member lookup for the seat input. Returns [] on any error so typing never breaks PPM.
+export async function searchMembers(q: string): Promise<MemberHit[]> {
+  const token = sessionStorage.getItem('ppm-session');
+  if (!token || !q.trim()) return [];
+  try {
+    const res = await fetch(API + '/members?limit=6&q=' + encodeURIComponent(q.trim()), { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.members) ? data.members : [];
+  } catch { return []; }
+}
