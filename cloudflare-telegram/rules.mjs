@@ -67,3 +67,22 @@ export function message(tables, now, { filter = 'all', full = [], minPlayers = 0
   lines.push('', 'https://www.everestpokerroom.com/waiting-list/', 'Contact : @midoripokerroom to reserve your seat');
   return lines.join('\n');
 }
+
+
+export function dailyInvitation(time) {
+  const local = new Date((time + 8 * 3600) * 1000);
+  // Catch a missed 16:00 tick during the same hour, without sending late-night catch-ups.
+  if (local.getUTCHours() !== 16) return null;
+  return {
+    day: local.toISOString().slice(0, 10),
+    text: `♠️ POKER TONIGHT AT EVEREST!
+
+Get ready for tonight’s poker action! Join us at Everest Poker Room, Midori Clark, 2F.
+
+Bring your friends and enjoy a great night at the tables!
+
+Telegram: @MIDORIPOKER
+Contact us for game details and seat reservations.
+https://www.everestpokerroom.com/waiting-list/`
+  };
+}

@@ -53,6 +53,10 @@ No booking, arrival, seat-hold or calling commands.
 
 ## Notification rules
 
+- Daily at 16:00 GMT+8: send the invitation with Telegram: @MIDORIPOKER to configured groups and channel, once per date/destination.
+  It is independent of table occupancy and does not reset table notification clocks. /updatesoff also pauses invitations.
+  A missed tick can catch up during 16:00–16:59; there is no late-night catch-up.
+
 - Public source tables T1/T2/T3/T5; nine seats each.
 - Groups and private subscribers: new table reaches >=5 → one interruption; otherwise 60 minutes from the last accepted notification.
 - Channel: new table reaches >=5 → one interruption; later increases at >=5 → immediate interruption (including recovery after a decrease).

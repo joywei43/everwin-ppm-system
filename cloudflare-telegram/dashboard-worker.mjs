@@ -68,6 +68,25 @@ export function message(tables, now, { filter = 'all', full = [], minPlayers = 0
   return lines.join('\n');
 }
 
+
+export function dailyInvitation(time) {
+  const local = new Date((time + 8 * 3600) * 1000);
+  // Catch a missed 16:00 tick during the same hour, without sending late-night catch-ups.
+  if (local.getUTCHours() !== 16) return null;
+  return {
+    day: local.toISOString().slice(0, 10),
+    text: `♠️ POKER TONIGHT AT EVEREST!
+
+Get ready for tonight’s poker action! Join us at Everest Poker Room, Midori Clark, 2F.
+
+Bring your friends and enjoy a great night at the tables!
+
+Telegram: @MIDORIPOKER
+Contact us for game details and seat reservations.
+https://www.everestpokerroom.com/waiting-list/`
+  };
+}
+
 export const SCHEMA = "CREATE TABLE IF NOT EXISTS bot_runtime (\n id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL DEFAULT '{}',\n lease TEXT, lease_until INTEGER NOT NULL DEFAULT 0\n);\nINSERT OR IGNORE INTO bot_runtime(id) VALUES(1);\nCREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);\nCREATE TABLE IF NOT EXISTS bot_subscribers (id TEXT PRIMARY KEY,filter TEXT NOT NULL CHECK(filter IN ('all','NLH','PLO','off')));\nCREATE TABLE IF NOT EXISTS bot_destinations (id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN ('group','channel')),title TEXT NOT NULL DEFAULT '');\nCREATE TABLE IF NOT EXISTS bot_updates (id INTEGER PRIMARY KEY,created INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS bot_jobs (\n id TEXT PRIMARY KEY, target TEXT NOT NULL, stream TEXT NOT NULL,\n method TEXT NOT NULL DEFAULT 'sendMessage', payload TEXT NOT NULL,\n created INTEGER NOT NULL, due INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,\n status TEXT NOT NULL DEFAULT 'pending', error TEXT\n);\nCREATE INDEX IF NOT EXISTS bot_jobs_due ON bot_jobs(status,due);\n";
 
 
@@ -126,6 +145,8 @@ export async function poll(env) {
       const subscribers=(await db.prepare("SELECT * FROM bot_subscribers WHERE filter!='off'").all()).results;
       const destinations=(await db.prepare('SELECT * FROM bot_destinations').all()).results;
       const statements=[];
+      const invitation=dailyInvitation(time);
+      if(invitation)for(const r of destinations)statements.push(job(db,`invitation:${invitation.day}:${r.id}`,r.id,'invitation',invitation.text,time));
       const pending=(await db.prepare("SELECT DISTINCT stream FROM bot_jobs WHERE status='pending'").all()).results.map(r=>r.stream);
       // Group clocks are updated on Telegram acceptance, rather than enqueue time.
       event.state.groupAt=previous.groupAt??null;
@@ -297,7 +318,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.5',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.6',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);

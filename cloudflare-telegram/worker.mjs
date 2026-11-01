@@ -1,4 +1,4 @@
-import { readTables, transition, message } from './rules.mjs';
+import { readTables, transition, message, dailyInvitation } from './rules.mjs';
 import { SCHEMA } from './schema.mjs';
 
 const SOURCE='https://everest-waiting-api.drumsjw47.workers.dev/state';
@@ -56,6 +56,8 @@ export async function poll(env) {
       const subscribers=(await db.prepare("SELECT * FROM bot_subscribers WHERE filter!='off'").all()).results;
       const destinations=(await db.prepare('SELECT * FROM bot_destinations').all()).results;
       const statements=[];
+      const invitation=dailyInvitation(time);
+      if(invitation)for(const r of destinations)statements.push(job(db,`invitation:${invitation.day}:${r.id}`,r.id,'invitation',invitation.text,time));
       const pending=(await db.prepare("SELECT DISTINCT stream FROM bot_jobs WHERE status='pending'").all()).results.map(r=>r.stream);
       // Group clocks are updated on Telegram acceptance, rather than enqueue time.
       event.state.groupAt=previous.groupAt??null;
@@ -227,7 +229,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.5',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.6',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);

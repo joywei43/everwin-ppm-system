@@ -141,3 +141,22 @@ test('automatic posts stop below five and stale retries are cancelled without ad
     assert.ok(sent.slice(1).every(p=>p.text.includes('5/9 players')));
   }finally{global.fetch=old;DB.sql.close();}
 });
+
+test('16:00 invitation sends once per day to group/channel with no open tables and preserves table clocks',async()=>{
+  const DB=db(),env={DB,BOT_TOKEN:'test',OWNER_ID:'1'},oldFetch=global.fetch,oldNow=Date.now;
+  DB.sql.exec("INSERT INTO bot_settings VALUES('connected','1'),('enabled','1'); INSERT INTO bot_destinations VALUES('-1','group','Players'),('-2','channel','Midori'); INSERT INTO bot_subscribers VALUES('1','all');");
+  Date.now=()=>Date.UTC(2026,10,2,8,0);const sent=[];
+  global.fetch=async(url,options)=>{
+    if(url.endsWith('/state'))return Response.json(state(0,false));
+    sent.push(JSON.parse(options.body));return Response.json({ok:true,result:{message_id:1}});
+  };
+  try{
+    await poll(env);await poll(env);
+    assert.deepEqual(sent.map(p=>p.chat_id).sort(),['-1','-2']);
+    assert.ok(sent.every(p=>p.text.includes('Telegram: @MIDORIPOKER')));
+    assert.equal(runtime(DB).groupAt,null);assert.equal(runtime(DB).channelAt,null);
+    Date.now=()=>Date.UTC(2026,10,3,8,0);await poll(env);assert.equal(sent.length,4);
+    DB.sql.exec("UPDATE bot_settings SET value='0' WHERE key='enabled'");
+    Date.now=()=>Date.UTC(2026,10,4,8,0);await poll(env);assert.equal(sent.length,4);
+  }finally{global.fetch=oldFetch;Date.now=oldNow;DB.sql.close();}
+});

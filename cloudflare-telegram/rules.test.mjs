@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { transition, message, readTables, THANK_YOU } from './rules.mjs';
+import { transition, message, readTables, THANK_YOU, dailyInvitation } from './rules.mjs';
 const table = (players, open = true, id = 'T1') => ({ id, players, open, game:'NLH', stakes:'50/100', capacity:9 });
 test('new table waits for five, each increase only interrupts channel', () => {
   let r = transition({},[table(0)],100); assert.equal(r.group,null); assert.equal(r.channel,null);
@@ -83,4 +83,12 @@ test('missed exact 04:00 tick sends later that morning and expired pending closu
   r=transition(r.state,[table(0,false)],localTime(30,3));const waiting=r.state;
   r=transition(JSON.parse(JSON.stringify(waiting)),[table(0,false)],localTime(30,4,3));assert.equal(r.common.text,THANK_YOU);
   r=transition(waiting,[table(0,false)],localTime(31,4));assert.equal(r.common,null);
+});
+
+test('daily invitation is due at 16:00 GMT+8 with requested Telegram contact',()=>{
+  assert.equal(dailyInvitation(localTime(30,15,59)),null);
+  const invite=dailyInvitation(localTime(30,16));
+  assert.equal(invite.day,'2026-10-30');assert.match(invite.text,/Telegram: @MIDORIPOKER/);
+  assert.equal(dailyInvitation(localTime(30,16,59)).day,invite.day);
+  assert.equal(dailyInvitation(localTime(30,17)),null);
 });
