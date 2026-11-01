@@ -48,17 +48,18 @@ export function useCloudTables(initial: () => TableState[]) {
       } finally {locked.current=false;setBusy(false);}
     })();
   };
-  const login = async (password: string) => {
+  const login = async (username: string, password: string) => {
     setBusy(true);
-    try { const data = await request('/login','POST',{username:'admin01',password},'');sessionStorage.setItem('ppm-session',data.token);setToken(data.token);setMessage('Connecting…'); }
+    try { const data = await request('/login','POST',{username:username.trim(),password},'');sessionStorage.setItem('ppm-session',data.token);if(data.user)sessionStorage.setItem('ppm-user',data.user);setToken(data.token);setMessage('Connecting…'); }
     catch(e){setMessage((e as Error).message);}finally{setBusy(false);}
   };
-  const logout = async () => {try {await request('/logout','POST',{});}finally{sessionStorage.removeItem('ppm-session');setToken('');setReady(false);}};
+  const logout = async () => {try {await request('/logout','POST',{});}finally{sessionStorage.removeItem('ppm-session');sessionStorage.removeItem('ppm-user');setToken('');setReady(false);}};
   return {tables,setTables,ready,busy,message,login,logout};
 }
 export function CloudLogin({cloud}:{cloud:ReturnType<typeof useCloudTables>}) {
+  const [username,setUsername]=useState('');
   const [password,setPassword]=useState('');
-  return <main style={{maxWidth:420,margin:'60px auto',padding:24}}><h1>Everwin PPM</h1><p>Staff sign in · admin01</p><form onSubmit={e=>{e.preventDefault();cloud.login(password);}}><input aria-label="Password" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/><button disabled={cloud.busy}>Sign in</button></form><p role="alert">{cloud.message}</p></main>;
+  return <main style={{maxWidth:420,margin:'60px auto',padding:24}}><h1>Everwin PPM</h1><p>Staff sign in</p><form style={{display:'grid',gap:10}} onSubmit={e=>{e.preventDefault();cloud.login(username,password);}}><label>Username <input aria-label="Username" autoComplete="username" autoCapitalize="off" spellCheck={false} maxLength={60} value={username} onChange={e=>setUsername(e.target.value)} required/></label><label>Password <input aria-label="Password" type="password" autoComplete="current-password" maxLength={200} value={password} onChange={e=>setPassword(e.target.value)} required/></label><button disabled={cloud.busy}>Sign in</button></form><p role="alert">{cloud.message}</p></main>;
 }
 
 export interface MemberHit { member_no: string; name: string; nickname: string; group_name: string | null; status: string; }
