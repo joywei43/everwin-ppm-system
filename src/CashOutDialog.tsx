@@ -4,8 +4,8 @@ export interface CashOutSeat { id: number; memberId: string; buyInAmount: number
 export interface CashOutResult { amount: number; busted: boolean; }
 
 const TEXT = {
-  zh: { title: '下桌結碼', one: (n: string) => `${n} 下桌，請輸入結碼金額`, many: (k: number) => `${k} 位玩家下桌，請輸入各自的結碼金額`, seat: '席次', buyIn: '買碼', cashOut: '結碼金額', busted: 'Busted（輸光）', cancel: '取消', confirm: '確認下桌', required: '請輸入結碼金額，輸光請按 Busted。', wl: '輸贏' },
-  en: { title: 'Cash out', one: (n: string) => `${n} is leaving. Enter the cash-out amount.`, many: (k: number) => `${k} players are leaving. Enter each cash-out amount.`, seat: 'Seat', buyIn: 'Buy-in', cashOut: 'Cash-out', busted: 'Busted', cancel: 'Cancel', confirm: 'Confirm leave', required: 'Enter a cash-out amount, or tap Busted if they lost it all.', wl: 'W/L' },
+  zh: { title: '下桌結帳', one: (n: string) => `${n} 下桌，請輸入結碼金額`, many: (k: number) => `${k} 位玩家下桌，請輸入各自的結碼金額`, seat: '席次', buyIn: '買碼', cashOut: '結碼金額', busted: 'Busted（輸光）', cancel: '取消', confirm: '結帳', required: '請輸入結碼金額，輸光請按 Busted。', wl: '輸贏' },
+  en: { title: 'Cash out', one: (n: string) => `${n} is leaving. Enter the cash-out amount.`, many: (k: number) => `${k} players are leaving. Enter each cash-out amount.`, seat: 'Seat', buyIn: 'Buy-in', cashOut: 'Cash-out', busted: 'Busted', cancel: 'Cancel', confirm: 'Cash out', required: 'Enter a cash-out amount, or tap Busted if they lost it all.', wl: 'W/L' },
 };
 
 // Asks for the chips each leaving player takes home. "Busted" records 0 (lost the whole buy-in).
