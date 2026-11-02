@@ -1,5 +1,6 @@
 import Queue from './Queue';
 import MemberInput from './MemberInput';
+import CashOutDialog, { CashOutSeat, CashOutResult } from './CashOutDialog';
 import { useCloudTables, CloudLogin } from './cloud';
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -34,6 +35,8 @@ interface SessionRow {
   buyInDisplay: string;
   buyInAmount: number | null;
   transferNote: string | null;
+  cashOutAmount?: number | null;
+  busted?: boolean;
 }
 
 export interface TableState {
@@ -220,6 +223,8 @@ const zhTexts = {
   csvHeaderDuration: '上桌時間(HH:MM:SS)',
   csvHeaderBuyIn: '買碼',
   csvHeaderTransfer: '轉席註記',
+  csvHeaderCashOut: '結碼金額',
+  csvHeaderWinLoss: '輸贏',
   csvSummaryTotalBuyIn: '本局總買碼',
   csvSummaryUniquePlayers: '不重複會員數',
   csvSummaryTotalSessions: '本局紀錄筆數',
@@ -279,6 +284,8 @@ const enTexts = {
   csvHeaderDuration: 'Duration (HH:MM:SS)',
   csvHeaderBuyIn: 'Buy-in',
   csvHeaderTransfer: 'Transfer Note',
+  csvHeaderCashOut: 'Cash-out',
+  csvHeaderWinLoss: 'Win/Loss',
   csvSummaryTotalBuyIn: 'Total Buy-in',
   csvSummaryUniquePlayers: 'Unique Members',
   csvSummaryTotalSessions: 'Total Sessions',
@@ -291,6 +298,7 @@ const App: React.FC = () => {
   const [lang, setLang] = useState<Lang>('zh');
   const [nowMs, setNowMs] = useState(Date.now());
   const [names, setNames] = useState<Record<string,string>>({});
+  const [cashOut, setCashOut] = useState<null | { seats: CashOutSeat[]; onConfirm: (r: Record<number, CashOutResult>) => void }>(null);
   const withNames = (tbl: TableState): TableState => ({...tbl,seats:tbl.seats.map(seat=>seat.status === 'idle' ? {...seat,memberId:names[tbl.id+':'+seat.id] ?? seat.memberId}:seat)});
 
   useEffect(() => {
@@ -391,6 +399,8 @@ const App: React.FC = () => {
       t.csvHeaderDuration,
       t.csvHeaderBuyIn,
       t.csvHeaderTransfer,
+      t.csvHeaderCashOut,
+      t.csvHeaderWinLoss,
     ];
 
     const rows = tbl.sessions.map((row) => [
@@ -405,6 +415,8 @@ const App: React.FC = () => {
       row.durationHMS,
       row.buyInDisplay,
       row.transferNote ?? '',
+      row.cashOutAmount == null ? '' : (row.busted ? '0 (Busted)' : row.cashOutAmount.toString()),
+      row.cashOutAmount == null || row.buyInAmount == null ? '' : (row.cashOutAmount - row.buyInAmount).toString(),
     ]);
 
     const allLines = [...headerLines, columns, ...rows];
@@ -517,6 +529,7 @@ const App: React.FC = () => {
     seat: SeatState,
     endTimeStr: string,
     nowMsSnapshot: number,
+    cashOut?: CashOutResult,
   ): SessionRow | null => {
     if (!seat.memberId || !seat.sessionStart) return null;
     const activeSeconds = getSeatActiveSeconds(seat, nowMsSnapshot);
@@ -540,6 +553,7 @@ const App: React.FC = () => {
       buyInDisplay,
       buyInAmount,
       transferNote: seat.transferNote,
+      ...(cashOut ? { cashOutAmount: cashOut.amount, busted: cashOut.busted } : {}),
     };
   };
 
@@ -681,25 +695,30 @@ const App: React.FC = () => {
     });
   };
 
-  const handleLeave = (seatId: number) => {
-    if (!currentTable) return;
-    const leaving = currentTable.seats.find(s=>s.id===seatId);
-    if (!leaving || leaving.status === 'idle') return;
-    if (!window.confirm(lang === 'zh' ? `確認讓 ${leaving.memberId} 下桌？` : `Confirm ${leaving.memberId} leaves the table?`)) return;
-    setNames(prev=>({...prev,[currentTableId+':'+seatId]:''}));
+  // Leaving asks for the cash-out amount (or Busted) before the session is written.
+  const leaveSeats = (tableId: number, results: Record<number, CashOutResult>) => {
     const now = Date.now();
     const endTimeStr = formatDateTime(new Date());
-    updateTable(currentTable.id, (tbl) => {
-      const nowSnap = now;
+    setNames(prev => { const next = { ...prev }; Object.keys(results).forEach((id) => { next[tableId + ':' + id] = ''; }); return next; });
+    updateTable(tableId, (tbl) => {
       const sessions: SessionRow[] = [...tbl.sessions];
       const seats = tbl.seats.map((s) => {
-        if (s.id !== seatId) return s;
-        const session = appendSessionRow(tbl, s, endTimeStr, nowSnap);
+        const r = results[s.id];
+        if (!r || s.status === 'idle') return s;
+        const session = appendSessionRow(tbl, s, endTimeStr, now, r);
         if (session) sessions.push(session);
         return clearSeat(s);
       });
       return { ...tbl, seats, sessions };
     });
+  };
+
+  const handleLeave = (seatId: number) => {
+    if (!currentTable) return;
+    const leaving = currentTable.seats.find(s=>s.id===seatId);
+    if (!leaving || leaving.status === 'idle') return;
+    const tableId = currentTable.id;
+    setCashOut({ seats: [{ id: leaving.id, memberId: leaving.memberId, buyInAmount: leaving.buyInAmount }], onConfirm: (r) => leaveSeats(tableId, r) });
   };
 
   const handleAddBuyIn = (seatId: number) => {
@@ -804,21 +823,7 @@ const App: React.FC = () => {
       window.alert(t.batchNoSelection);
       return;
     }
-    const ok = window.confirm(t.confirmBatchLeave);
-    if (!ok) return;
-    const now = Date.now();
-    const endTimeStr = formatDateTime(new Date());
-    updateTable(tbl.id, (prevTbl) => {
-      const nowSnap = now;
-      const sessions: SessionRow[] = [...prevTbl.sessions];
-      const seats = prevTbl.seats.map((s) => {
-        if (!s.selectedForBatch || s.status === 'idle') return s;
-        const session = appendSessionRow(prevTbl, s, endTimeStr, nowSnap);
-        if (session) sessions.push(session);
-        return clearSeat(s);
-      });
-      return { ...prevTbl, seats, sessions };
-    });
+    setCashOut({ seats: selected.map((s) => ({ id: s.id, memberId: s.memberId, buyInAmount: s.buyInAmount })), onConfirm: (r) => leaveSeats(tbl.id, r) });
   };
 
   const tableElapsed = currentTable ? getTableElapsedSeconds(currentTable, nowMs) : 0;
@@ -827,6 +832,7 @@ const App: React.FC = () => {
   return (
     <div className="app-root">
       <div role="status">{cloud.message} <button onClick={cloud.logout}>Sign out</button></div>
+      {cashOut && <CashOutDialog seats={cashOut.seats} lang={lang} onCancel={() => setCashOut(null)} onConfirm={(r) => { const done = cashOut.onConfirm; setCashOut(null); done(r); }} />}
       <fieldset disabled={cloud.busy} style={{border:0,padding:0,margin:0}}>
       <div className="app-shell">
         <header className="app-header">

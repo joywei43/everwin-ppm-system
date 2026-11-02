@@ -15,4 +15,18 @@ const input=()=>app.root.findAllByType('input').find(i=>i.props.className==='mem
 const before=writes;await act(async()=>input().props.onChange({target:{value:'Alice'}}));assert.equal(writes,before,'typing must not save');
 // An action during the background read must wait and then save exactly once.
 delay=true;await act(async()=>{poll();await flush()});await act(async()=>{button('上桌').props.onClick();await flush()});assert.equal(writes,before);delay=false;await act(async()=>{resolveRead();await flush()});assert.equal(writes,before+1);assert.equal(prompts,1);assert.equal(tables[0].seats[0].memberId,'Alice');assert.equal(tables[0].seats[0].buyInAmount,2500);assert.equal(tables[0].seats[0].status,'seated');assert.ok(tables[0].seats[0].lastActiveStart);
-confirmation=false;await act(async()=>button('下桌').props.onClick());assert.equal(tables[0].seats[0].status,'seated');confirmation=true;await act(async()=>{button('下桌').props.onClick();await flush()});assert.equal(tables[0].seats[0].status,'idle');assert.equal(tables[0].sessions[0].buyInAmount,2500);assert.equal(input().props.value,'');app.unmount();console.log('PASS: name draft, one-click seat, buy-in, timer, polling race, cancel leave, confirmed leave and session record');})().catch(e=>{console.error(e);process.exit(1)});
+const cashForm=()=>app.root.findAllByType('form').find(f=>f.props.className==='cash-dialog');
+await act(async()=>button('下桌').props.onClick());assert.ok(cashForm(),'leave opens the cash-out dialog');
+await act(async()=>button('取消').props.onClick());assert.ok(!cashForm());assert.equal(tables[0].seats[0].status,'seated','cancel keeps the player seated');
+await act(async()=>button('下桌').props.onClick());
+const before=writes;await act(async()=>{cashForm().props.onSubmit({preventDefault(){}});await flush()});assert.equal(writes,before,'no amount, no leave');assert.ok(cashForm());
+const cashInput=()=>app.root.findAllByType('input').find(i=>i.props.className==='cash-input');
+await act(async()=>cashInput().props.onChange({target:{value:'4,000'}}));
+await act(async()=>{cashForm().props.onSubmit({preventDefault(){}});await flush()});
+assert.equal(tables[0].seats[0].status,'idle');assert.equal(tables[0].sessions[0].buyInAmount,2500);assert.equal(tables[0].sessions[0].cashOutAmount,4000);assert.equal(tables[0].sessions[0].busted,false);assert.equal(input().props.value,'');
+// Busted records 0.
+await act(async()=>input().props.onChange({target:{value:'Bob'}}));await act(async()=>{button('上桌').props.onClick();await flush()});
+await act(async()=>button('下桌').props.onClick());await act(async()=>app.root.findAllByType('button').find(b=>b.props.className&&b.props.className.startsWith('cash-busted')).props.onClick());
+await act(async()=>{cashForm().props.onSubmit({preventDefault(){}});await flush()});
+assert.equal(tables[0].sessions[1].cashOutAmount,0);assert.equal(tables[0].sessions[1].busted,true);
+app.unmount();console.log('PASS: name draft, one-click seat, buy-in, timer, polling race, cancel leave, cash-out on leave, busted, session record');})().catch(e=>{console.error(e);process.exit(1)});
