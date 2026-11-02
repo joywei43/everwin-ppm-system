@@ -20,6 +20,9 @@ delay=true;await act(async()=>{poll();await flush()});await act(async()=>{button
 await act(async()=>{button('⇄ 換位').props.onClick();await flush()});assert.equal(tables[0].seats[0].status,'idle');assert.equal(tables[0].seats[3].memberId,'Alice');assert.equal(tables[0].seats[3].buyInAmount,2500);assert.equal(tables[0].seats[3].sessionStart,start);
 await act(async()=>{button('⇄ 換位').props.onClick();await flush()});assert.equal(tables[0].seats[3].status,'idle');assert.equal(tables[0].seats[0].memberId,'Alice');assert.equal(tables[0].seats[0].status,'seated');
 window.prompt=()=>{prompts++;return '2500'};}
+// Change level: a dialog confirms the new game and blinds.
+{await act(async()=>button('換級別').props.onClick());const lf=()=>app.root.findAllByType('form').find(f=>f.props.className==='cash-dialog level-dialog');assert.ok(lf());
+await act(async()=>lf().findAllByType('select')[0].props.onChange({target:{value:'PLO'}}));await act(async()=>{lf().props.onSubmit({preventDefault(){}});await flush()});assert.ok(!lf());assert.equal(tables[0].gameType,'PLO');assert.equal(tables[0].blinds,'50 / 100');}
 const cashForm=()=>app.root.findAllByType('form').find(f=>f.props.className==='cash-dialog');
 await act(async()=>button('下桌').props.onClick());assert.ok(cashForm(),'leave opens the cash-out dialog');
 await act(async()=>button('取消').props.onClick());assert.ok(!cashForm());assert.equal(tables[0].seats[0].status,'seated','cancel keeps the player seated');

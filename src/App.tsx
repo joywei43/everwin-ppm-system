@@ -2,6 +2,7 @@ import Queue from './Queue';
 import MemberInput from './MemberInput';
 import CashOutDialog, { CashOutSeat, CashOutResult } from './CashOutDialog';
 import UpdateBanner from './UpdateBanner';
+import LevelDialog, { GAME_TYPES, BLINDS } from './LevelDialog';
 import { useCloudTables, CloudLogin } from './cloud';
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -200,6 +201,7 @@ const zhTexts = {
   btnLeave: '下桌',
   btnAddBuyIn: '+ 加買',
   btnChangeSeat: '換位',
+  btnChangeLevel: '換級別',
   promptChangeSeat: (who: string, here: string) => `${who} 目前在 ${here}。\n要換到幾號位？輸入 1–9。\n換到別桌請輸入桌號加位號，例如 T3 5`,
   badSeat: '請輸入 1–9 的位號，換桌請輸入例如 T3 5。',
   noSuchTable: (n: string) => `找不到 ${n} 這張桌。`,
@@ -268,6 +270,7 @@ const enTexts = {
   btnLeave: 'Leave',
   btnAddBuyIn: '+ Chips',
   btnChangeSeat: 'Change Seat',
+  btnChangeLevel: 'Change level',
   promptChangeSeat: (who: string, here: string) => `${who} is at ${here}.\nMove to which seat? Enter 1–9.\nFor another table, enter the table and seat, e.g. T3 5`,
   badSeat: 'Enter a seat 1–9, or a table and seat such as T3 5.',
   noSuchTable: (n: string) => `There is no table ${n}.`,
@@ -313,6 +316,7 @@ const App: React.FC = () => {
   const [lang, setLang] = useState<Lang>('zh');
   const [nowMs, setNowMs] = useState(Date.now());
   const [names, setNames] = useState<Record<string,string>>({});
+  const [levelOpen, setLevelOpen] = useState(false);
   const [cashOut, setCashOut] = useState<null | { seats: CashOutSeat[]; onConfirm: (r: Record<number, CashOutResult>) => void }>(null);
   const withNames = (tbl: TableState): TableState => ({...tbl,seats:tbl.seats.map(seat=>seat.status === 'idle' ? {...seat,memberId:names[tbl.id+':'+seat.id] ?? seat.memberId}:seat)});
 
@@ -889,6 +893,8 @@ const App: React.FC = () => {
     <div className="app-root">
       <div role="status">{cloud.message} <button onClick={cloud.logout}>Sign out</button></div>
       <UpdateBanner lang={lang} />
+      {levelOpen && currentTable && <LevelDialog table={currentTable.name} gameType={currentTable.gameType} blinds={currentTable.blinds} lang={lang} onCancel={() => setLevelOpen(false)}
+        onConfirm={(g, b) => { const id = currentTable.id; setLevelOpen(false); updateTable(id, (tb) => ({ ...tb, gameType: g, blinds: b })); }} />}
       {cashOut && <CashOutDialog seats={cashOut.seats} lang={lang} onCancel={() => setCashOut(null)} onConfirm={(r) => { const done = cashOut.onConfirm; setCashOut(null); done(r); }} />}
       <fieldset disabled={cloud.busy} style={{border:0,padding:0,margin:0}}>
       <div className="app-shell">
@@ -977,8 +983,9 @@ const App: React.FC = () => {
               <div className="left-info-extra">
                 <div className="info-row">
                   <span className="info-label">{t.blinds}</span>
-                  <select className="info-input" value={currentTable.gameType} onChange={e=>updateTable(currentTable.id,t=>({...t,gameType:e.target.value}))}>{["NLH","PLO","Others"].map(v=><option key={v}>{v}</option>)}</select>
-                  <select className="info-input" value={currentTable.blinds} onChange={e=>handleBlindsChange(e.target.value)}>{['25 / 50','50 / 50','50 / 100','100 / 100','100 / 200'].map(v=><option key={v}>{v}</option>)}</select>
+                  <select className="info-input" aria-label={t.blinds} disabled={currentTable.isRunning} value={currentTable.gameType} onChange={e=>updateTable(currentTable.id,t=>({...t,gameType:e.target.value}))}>{GAME_TYPES.map(v=><option key={v}>{v}</option>)}</select>
+                  <select className="info-input" aria-label={t.blinds} disabled={currentTable.isRunning} value={currentTable.blinds} onChange={e=>handleBlindsChange(e.target.value)}>{BLINDS.map(v=><option key={v}>{v}</option>)}</select>
+                  <button type="button" className="seat-btn btn-xs-yellow level-btn" onClick={()=>setLevelOpen(true)}>{t.btnChangeLevel}</button>
                 </div>
               </div>
 

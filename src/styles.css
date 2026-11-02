@@ -602,3 +602,11 @@ html {
 .seat-mini-row { display: flex; gap: 6px; margin-top: 6px; }
 .seat-mini { border: 1px solid rgba(148,163,184,0.45); background: transparent; color: var(--text-main); border-radius: 999px; font-size: 10px; line-height: 1; padding: 4px 9px; cursor: pointer; opacity: 0.85; }
 .seat-mini:hover { opacity: 1; border-color: rgba(234,179,8,0.8); }
+
+/* Change level */
+.level-btn { margin-left: auto; white-space: nowrap; }
+.info-input:disabled { opacity: 0.75; cursor: not-allowed; }
+.level-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.level-row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; opacity: 0.9; flex: 1 1 140px; }
+.level-to { margin: 12px 0 4px; font-size: 16px; }
+.info-row { flex-wrap: wrap; align-items: center; }
