@@ -597,3 +597,8 @@ html {
 
 .update-banner { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 16px; background: #facc15; color: #111827; font-weight: 600; }
 .update-banner button { border: 0; border-radius: 999px; padding: 6px 14px; background: #111827; color: #fff; font-weight: 600; cursor: pointer; }
+
+/* Change Seat and + Chips: small secondary buttons under the main seat actions. */
+.seat-mini-row { display: flex; gap: 6px; margin-top: 6px; }
+.seat-mini { border: 1px solid rgba(148,163,184,0.45); background: transparent; color: var(--text-main); border-radius: 999px; font-size: 10px; line-height: 1; padding: 4px 9px; cursor: pointer; opacity: 0.85; }
+.seat-mini:hover { opacity: 1; border-color: rgba(234,179,8,0.8); }

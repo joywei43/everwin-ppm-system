@@ -198,7 +198,14 @@ const zhTexts = {
   btnSeat: '上桌',
   btnRest: '休息',
   btnLeave: '下桌',
-  btnAddBuyIn: '加買籌碼',
+  btnAddBuyIn: '+ 加買',
+  btnChangeSeat: '換位',
+  promptChangeSeat: (who: string, here: string) => `${who} 目前在 ${here}。\n要換到幾號位？輸入 1–9。\n換到別桌請輸入桌號加位號，例如 T3 5`,
+  badSeat: '請輸入 1–9 的位號，換桌請輸入例如 T3 5。',
+  noSuchTable: (n: string) => `找不到 ${n} 這張桌。`,
+  targetNotRunning: (n: string) => `${n} 還沒開桌，請先開桌再換過去。`,
+  seatTaken: (where: string, who: string) => `${where} 已經有人（${who}），請選其他位置。`,
+  promptMoveChips: (where: string) => `換到 ${where}。\n有加買籌碼嗎？沒有的話輸入 0。`,
   btnBatchSeat: '批次上桌',
   btnBatchLeave: '批次下桌',
   tableHasPlayers: '仍有玩家在桌上（非休息），請先讓所有玩家下桌。',
@@ -259,7 +266,14 @@ const enTexts = {
   btnSeat: 'Seat',
   btnRest: 'Rest',
   btnLeave: 'Leave',
-  btnAddBuyIn: 'Add Chips',
+  btnAddBuyIn: '+ Chips',
+  btnChangeSeat: 'Change Seat',
+  promptChangeSeat: (who: string, here: string) => `${who} is at ${here}.\nMove to which seat? Enter 1–9.\nFor another table, enter the table and seat, e.g. T3 5`,
+  badSeat: 'Enter a seat 1–9, or a table and seat such as T3 5.',
+  noSuchTable: (n: string) => `There is no table ${n}.`,
+  targetNotRunning: (n: string) => `${n} is not open yet. Open it first.`,
+  seatTaken: (where: string, who: string) => `${where} is taken (${who}). Choose another seat.`,
+  promptMoveChips: (where: string) => `Moving to ${where}.\nAny extra chips bought? Enter 0 if none.`,
   btnBatchSeat: 'Batch Seat',
   btnBatchLeave: 'Batch Leave',
   tableHasPlayers: 'There are still players seated (not resting). Please let them leave first.',
@@ -722,6 +736,47 @@ const App: React.FC = () => {
     setCashOut({ seats: [{ id: leaving.id, memberId: leaving.memberId, buyInAmount: leaving.buyInAmount }], onConfirm: (r) => leaveSeats(tableId, r) });
   };
 
+  // Change Seat: the session continues at the new seat (same start time, play time and buy-in), on this table or another open table.
+  const handleChangeSeat = (seatId: number) => {
+    if (!currentTable) return;
+    const from = currentTable;
+    const seat = from.seats.find((s) => s.id === seatId);
+    if (!seat || seat.status === 'idle') return;
+    const here = `${from.name} #${seat.id}`;
+    const raw = window.prompt(t.promptChangeSeat(seat.memberId, here), '');
+    if (raw == null || !raw.trim()) return;
+    const m = /^\s*(?:([A-Za-z]*\d+)\s*[-#\s/]\s*)?(\d)\s*$/.exec(raw);
+    if (!m || Number(m[2]) < 1 || Number(m[2]) > 9) { window.alert(t.badSeat); return; }
+    const tableKey = m[1] ? m[1].toUpperCase() : '';
+    const to = !tableKey ? from : tables.find((tb) => tb.name.toUpperCase() === tableKey || tb.name.toUpperCase() === 'T' + tableKey);
+    if (!to) { window.alert(t.noSuchTable(tableKey)); return; }
+    const toSeatId = Number(m[2]);
+    if (to.id === from.id && toSeatId === seat.id) return;
+    if (!to.isRunning) { window.alert(t.targetNotRunning(to.name)); return; }
+    const target = to.seats.find((s) => s.id === toSeatId)!;
+    const there = `${to.name} #${toSeatId}`;
+    if (target.status !== 'idle') { window.alert(t.seatTaken(there, target.memberId)); return; }
+    const chipsRaw = window.prompt(t.promptMoveChips(there), '0');
+    if (chipsRaw == null) return;
+    const extra = Number(chipsRaw.replace(/[,\s]/g, '') || '0');
+    if (!Number.isFinite(extra) || extra < 0) { window.alert(t.invalidNumber); return; }
+    setNames((prev) => ({ ...prev, [to.id + ':' + toSeatId]: '', [from.id + ':' + seat.id]: '' }));
+    setTables((prev) => {
+      const live = prev.find((tb) => tb.id === from.id)?.seats.find((s) => s.id === seat.id);
+      const dest = prev.find((tb) => tb.id === to.id)?.seats.find((s) => s.id === toSeatId);
+      if (!live || live.status === 'idle' || !dest || dest.status !== 'idle') return prev;
+      const moved: SeatState = { ...live, id: toSeatId, selectedForBatch: false, buyInAmount: live.buyInAmount + Math.round(extra) };
+      return prev.map((tb) => {
+        if (tb.id !== from.id && tb.id !== to.id) return tb;
+        return { ...tb, seats: tb.seats.map((s) => {
+          if (tb.id === to.id && s.id === toSeatId) return moved;
+          if (tb.id === from.id && s.id === seat.id) return clearSeat(s);
+          return s;
+        }) };
+      });
+    });
+  };
+
   const handleAddBuyIn = (seatId: number) => {
     if (!currentTable) return;
     const seat = currentTable.seats.find((s) => s.id === seatId);
@@ -1037,14 +1092,17 @@ const App: React.FC = () => {
                           {t.btnLeave}
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        className="seat-btn btn-xs-yellow"
-                        onClick={() => handleAddBuyIn(seat.id)}
-                      >
-                        {t.btnAddBuyIn}
-                      </button>
                     </div>
+                    {seat.status !== 'idle' && (
+                      <div className="seat-mini-row">
+                        <button type="button" className="seat-mini" onClick={() => handleChangeSeat(seat.id)}>
+                          ⇄ {t.btnChangeSeat}
+                        </button>
+                        <button type="button" className="seat-mini" onClick={() => handleAddBuyIn(seat.id)}>
+                          {t.btnAddBuyIn}
+                        </button>
+                      </div>
+                    )}
                     <div className="seat-extra-row">
                       <MemberInput
                         placeholder={t.memberId}
