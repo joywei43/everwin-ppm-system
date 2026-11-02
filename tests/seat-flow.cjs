@@ -19,7 +19,7 @@ const cashForm=()=>app.root.findAllByType('form').find(f=>f.props.className==='c
 await act(async()=>button('下桌').props.onClick());assert.ok(cashForm(),'leave opens the cash-out dialog');
 await act(async()=>button('取消').props.onClick());assert.ok(!cashForm());assert.equal(tables[0].seats[0].status,'seated','cancel keeps the player seated');
 await act(async()=>button('下桌').props.onClick());
-const before=writes;await act(async()=>{cashForm().props.onSubmit({preventDefault(){}});await flush()});assert.equal(writes,before,'no amount, no leave');assert.ok(cashForm());
+const beforeCash=writes;await act(async()=>{cashForm().props.onSubmit({preventDefault(){}});await flush()});assert.equal(writes,beforeCash,'no amount, no leave');assert.ok(cashForm());
 const cashInput=()=>app.root.findAllByType('input').find(i=>i.props.className==='cash-input');
 await act(async()=>cashInput().props.onChange({target:{value:'4,000'}}));
 await act(async()=>{cashForm().props.onSubmit({preventDefault(){}});await flush()});
