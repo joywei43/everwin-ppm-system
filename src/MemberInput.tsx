@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { searchMembers, MemberHit } from './cloud';
 
 // Seat name box: type a member number or nickname and pick from the list.
-// Picking fills in the member number so play time is credited to the right member.
+// Picking fills in "Nickname (666666)" so staff see the name and play time is credited by the number.
 export default function MemberInput(props: {
   value: string; disabled: boolean; placeholder: string; onChange: (e: { target: { value: string } }) => void;
 }) {
@@ -23,7 +23,9 @@ export default function MemberInput(props: {
       setHits(found); setActive(0); setOpen(found.length > 0);
     }, 250);
   };
-  const pick = (m: MemberHit) => { props.onChange({ target: { value: m.member_no } }); setOpen(false); setHits([]); };
+  // Shown as "Nickname (666666)"; the number in brackets is what credits the member.
+  const label = (m: MemberHit) => { const no = m.member_no.replace(/^EV-/i, ''); const name = (m.nickname || m.name || '').trim().slice(0, 45); return name ? `${name} (${no})` : no; };
+  const pick = (m: MemberHit) => { props.onChange({ target: { value: label(m) } }); setOpen(false); setHits([]); };
 
   return (
     <div className="member-ac">
