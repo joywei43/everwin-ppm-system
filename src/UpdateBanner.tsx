@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 // Checks every minute whether a newer PPM build has been published and offers a one-tap reload.
 // Table data lives in the cloud and the sign-in survives a reload, so reloading is safe.
-const current = () => (document.querySelector('script[type="module"][src*="assets/index-"]') as HTMLScriptElement | null)?.getAttribute('src') || '';
+const current = () => (typeof document === 'undefined' || typeof fetch === 'undefined') ? '' : (document.querySelector('script[type="module"][src*="assets/index-"]') as HTMLScriptElement | null)?.getAttribute('src') || '';
 
 export default function UpdateBanner(props: { lang: 'zh' | 'en' }) {
   const [ready, setReady] = useState(false);
