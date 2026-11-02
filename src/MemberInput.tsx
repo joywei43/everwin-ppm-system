@@ -52,7 +52,7 @@ export default function MemberInput(props: {
           {hits.map((m, i) => (
             <li key={m.member_no} role="option" aria-selected={i === active}>
               <button type="button" className={i === active ? 'active' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(m)}>
-                <span className="member-ac-no">{m.member_no}</span> {m.nickname || m.name}
+                <span className="member-ac-no">{m.member_no}</span> {m.nick_label || m.nickname || m.name}
                 <span className="member-ac-sub">{m.name}{m.group_name ? ' · ' + m.group_name : ''}{m.status !== 'active' ? ' · ' + m.status.toUpperCase() : ''}</span>
               </button>
             </li>

@@ -62,7 +62,7 @@ export function CloudLogin({cloud}:{cloud:ReturnType<typeof useCloudTables>}) {
   return <main style={{maxWidth:420,margin:'60px auto',padding:24}}><h1>Everwin PPM</h1><p>Staff sign in</p><form style={{display:'grid',gap:10}} onSubmit={e=>{e.preventDefault();cloud.login(username,password);}}><label>Username <input aria-label="Username" autoComplete="username" autoCapitalize="off" spellCheck={false} maxLength={60} value={username} onChange={e=>setUsername(e.target.value)} required/></label><label>Password <input aria-label="Password" type="password" autoComplete="current-password" maxLength={200} value={password} onChange={e=>setPassword(e.target.value)} required/></label><button disabled={cloud.busy}>Sign in</button></form><p role="alert">{cloud.message}</p></main>;
 }
 
-export interface MemberHit { member_no: string; name: string; nickname: string; group_name: string | null; status: string; }
+export interface MemberHit { member_no: string; name: string; nickname: string; nick_label?: string; nationality?: string; group_name: string | null; status: string; }
 // Member lookup for the seat input. Returns [] on any error so typing never breaks PPM.
 export async function searchMembers(q: string): Promise<MemberHit[]> {
   const token = sessionStorage.getItem('ppm-session');
