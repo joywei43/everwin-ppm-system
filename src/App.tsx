@@ -1,6 +1,7 @@
 import Queue from './Queue';
 import MemberInput from './MemberInput';
 import CashOutDialog, { CashOutSeat, CashOutResult } from './CashOutDialog';
+import UpdateBanner from './UpdateBanner';
 import { useCloudTables, CloudLogin } from './cloud';
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -832,6 +833,7 @@ const App: React.FC = () => {
   return (
     <div className="app-root">
       <div role="status">{cloud.message} <button onClick={cloud.logout}>Sign out</button></div>
+      <UpdateBanner lang={lang} />
       {cashOut && <CashOutDialog seats={cashOut.seats} lang={lang} onCancel={() => setCashOut(null)} onConfirm={(r) => { const done = cashOut.onConfirm; setCashOut(null); done(r); }} />}
       <fieldset disabled={cloud.busy} style={{border:0,padding:0,margin:0}}>
       <div className="app-shell">

@@ -594,3 +594,6 @@ html {
 .cash-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .cash-actions .seat-btn { height: 44px; padding: 0 18px; font-size: 15px; }
 .cash-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.update-banner { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 16px; background: #facc15; color: #111827; font-weight: 600; }
+.update-banner button { border: 0; border-radius: 999px; padding: 6px 14px; background: #111827; color: #fff; font-weight: 600; cursor: pointer; }
