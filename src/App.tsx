@@ -909,6 +909,7 @@ const App: React.FC = () => {
     <div className="app-root">
       <div role="status">{cloud.message} <button onClick={cloud.logout}>Sign out</button></div>
       <UpdateBanner lang={lang} />
+      {cloud.notice && <div className={'sync-notice ' + cloud.notice.kind} role="status">{cloud.notice.text}</div>}
       {levelOpen && currentTable && <LevelDialog table={currentTable.name} gameType={currentTable.gameType} blinds={currentTable.blinds} lang={lang} onCancel={() => setLevelOpen(false)}
         onConfirm={(g, b) => { const id = currentTable.id; setLevelOpen(false); updateTable(id, (tb) => ({ ...tb, gameType: g, blinds: b })); }} />}
       {cashOut && <CashOutDialog seats={cashOut.seats} lang={lang} onCancel={() => setCashOut(null)} onConfirm={(r) => { const done = cashOut.onConfirm; setCashOut(null); done(r); }} />}

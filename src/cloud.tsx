@@ -7,6 +7,22 @@ export function useCloudTables(initial: () => TableState[]) {
   const refreshing = useRef<Promise<void> | null>(null);
   const [token, setToken] = useState(() => sessionStorage.getItem('ppm-session') || '');
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+  // Result of copying finished sessions to the member system, shown to staff right after Leave.
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showSync = (sync: any) => {
+    if (!sync) return;
+    let next: { kind: 'ok' | 'warn' | 'error'; text: string } | null = null;
+    if (sync.error) next = { kind: 'error', text: `會員系統未更新 · Not recorded: ${sync.error} — 5 分鐘內會自動重試 (retries automatically)` };
+    else if (sync.inserted && Array.isArray(sync.sessions)) {
+      const lost = sync.sessions.filter((x: any) => !x.member_no);
+      next = { kind: lost.length ? 'warn' : 'ok', text: '已寫入會員系統 · Recorded: ' + sync.sessions.map((x: any) => `${x.ref} → ${x.member_no || '未對應會員 (link in Unmatched PPM)'}`).join(' · ') };
+    }
+    if (!next) return;
+    setNotice(next);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), next.kind === 'ok' ? 8000 : 20000);
+  };
   const receive = useCallback((data: any) => {
     version.current = data.version;
     current.current = data.tables.length ? data.tables : initial();
@@ -42,7 +58,7 @@ export function useCloudTables(initial: () => TableState[]) {
         if (refreshing.current) await refreshing.current;
         const next = typeof change === 'function' ? change(current.current) : change;
         const data = await request('/ppm','PUT',{version:version.current,tables:next});
-        receive(data); setMessage('Saved · Live Update synced');
+        receive(data); setMessage('Saved · Live Update synced'); showSync(data.sync);
       } catch(e) {
         setMessage((e as Error).message); try {receive(await request('/ppm'));} catch {}
       } finally {locked.current=false;setBusy(false);}
@@ -54,7 +70,7 @@ export function useCloudTables(initial: () => TableState[]) {
     catch(e){setMessage((e as Error).message);}finally{setBusy(false);}
   };
   const logout = async () => {try {await request('/logout','POST',{});}finally{sessionStorage.removeItem('ppm-session');sessionStorage.removeItem('ppm-user');setToken('');setReady(false);}};
-  return {tables,setTables,ready,busy,message,login,logout};
+  return {tables,setTables,ready,busy,message,notice,login,logout};
 }
 export function CloudLogin({cloud}:{cloud:ReturnType<typeof useCloudTables>}) {
   const [username,setUsername]=useState('');
