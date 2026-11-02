@@ -15,8 +15,8 @@ const input=()=>app.root.findAllByType('input').find(i=>i.props.className==='mem
 const before=writes;await act(async()=>input().props.onChange({target:{value:'Alice'}}));assert.equal(writes,before,'typing must not save');
 // An action during the background read must wait and then save exactly once.
 delay=true;await act(async()=>{poll();await flush()});await act(async()=>{button('上桌').props.onClick();await flush()});assert.equal(writes,before);delay=false;await act(async()=>{resolveRead();await flush()});assert.equal(writes,before+1);assert.equal(prompts,1);assert.equal(tables[0].seats[0].memberId,'Alice');assert.equal(tables[0].seats[0].buyInAmount,2500);assert.equal(tables[0].seats[0].status,'seated');assert.ok(tables[0].seats[0].lastActiveStart);
-// Change Seat: the session moves to seat 4 (extra chips 0) and back; the same start time and buy-in are kept.
-{const start=tables[0].seats[0].sessionStart;const answers=['4','0','T1 1','0'];window.prompt=()=>answers.shift();
+// Change Seat on the same table: the session moves to seat 4 and back without asking for chips; start time and buy-in are kept.
+{const start=tables[0].seats[0].sessionStart;const answers=['4','T1 1'];window.prompt=()=>answers.shift();
 await act(async()=>{button('⇄ 換位').props.onClick();await flush()});assert.equal(tables[0].seats[0].status,'idle');assert.equal(tables[0].seats[3].memberId,'Alice');assert.equal(tables[0].seats[3].buyInAmount,2500);assert.equal(tables[0].seats[3].sessionStart,start);
 await act(async()=>{button('⇄ 換位').props.onClick();await flush()});assert.equal(tables[0].seats[3].status,'idle');assert.equal(tables[0].seats[0].memberId,'Alice');assert.equal(tables[0].seats[0].status,'seated');
 window.prompt=()=>{prompts++;return '2500'};}

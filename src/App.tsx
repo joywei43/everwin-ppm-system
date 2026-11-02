@@ -207,7 +207,7 @@ const zhTexts = {
   noSuchTable: (n: string) => `找不到 ${n} 這張桌。`,
   targetNotRunning: (n: string) => `${n} 還沒開桌，請先開桌再換過去。`,
   seatTaken: (where: string, who: string) => `${where} 已經有人（${who}），請選其他位置。`,
-  promptMoveChips: (where: string) => `換到 ${where}。\n有加買籌碼嗎？沒有的話輸入 0。`,
+  promptMoveChips: (where: string) => `換到 ${where}。\n請輸入帶過去的總碼（玩家目前的籌碼）。`,
   btnBatchSeat: '批次上桌',
   btnBatchLeave: '批次下桌',
   tableHasPlayers: '仍有玩家在桌上（非休息），請先讓所有玩家下桌。',
@@ -276,7 +276,7 @@ const enTexts = {
   noSuchTable: (n: string) => `There is no table ${n}.`,
   targetNotRunning: (n: string) => `${n} is not open yet. Open it first.`,
   seatTaken: (where: string, who: string) => `${where} is taken (${who}). Choose another seat.`,
-  promptMoveChips: (where: string) => `Moving to ${where}.\nAny extra chips bought? Enter 0 if none.`,
+  promptMoveChips: (where: string) => `Moving to ${where}.\nEnter the total chips the player brings (their current stack).`,
   btnBatchSeat: 'Batch Seat',
   btnBatchLeave: 'Batch Leave',
   tableHasPlayers: 'There are still players seated (not resting). Please let them leave first.',
@@ -760,19 +760,35 @@ const App: React.FC = () => {
     const target = to.seats.find((s) => s.id === toSeatId)!;
     const there = `${to.name} #${toSeatId}`;
     if (target.status !== 'idle') { window.alert(t.seatTaken(there, target.memberId)); return; }
-    const chipsRaw = window.prompt(t.promptMoveChips(there), '0');
-    if (chipsRaw == null) return;
-    const extra = Number(chipsRaw.replace(/[,\s]/g, '') || '0');
-    if (!Number.isFinite(extra) || extra < 0) { window.alert(t.invalidNumber); return; }
+    const sameTable = to.id === from.id;
+    // Another table: the player cashes out here with their stack and buys in there with the same chips,
+    // so each table's records are right and the member's overall W/L still adds up.
+    let stack = 0;
+    if (!sameTable) {
+      const chipsRaw = window.prompt(t.promptMoveChips(there), '');
+      if (chipsRaw == null) return;
+      stack = Number(chipsRaw.replace(/[,\s]/g, ''));
+      if (!chipsRaw.trim() || !Number.isFinite(stack) || stack < 0) { window.alert(t.invalidNumber); return; }
+      stack = Math.round(stack);
+    }
     setNames((prev) => ({ ...prev, [to.id + ':' + toSeatId]: '', [from.id + ':' + seat.id]: '' }));
     setTables((prev) => {
-      const live = prev.find((tb) => tb.id === from.id)?.seats.find((s) => s.id === seat.id);
+      const fromTbl = prev.find((tb) => tb.id === from.id);
+      const live = fromTbl?.seats.find((s) => s.id === seat.id);
       const dest = prev.find((tb) => tb.id === to.id)?.seats.find((s) => s.id === toSeatId);
-      if (!live || live.status === 'idle' || !dest || dest.status !== 'idle') return prev;
-      const moved: SeatState = { ...live, id: toSeatId, selectedForBatch: false, buyInAmount: live.buyInAmount + Math.round(extra) };
+      if (!fromTbl || !live || live.status === 'idle' || !dest || dest.status !== 'idle') return prev;
+      const now = Date.now();
+      let closed: SessionRow | null = null;
+      let moved: SeatState;
+      if (sameTable) {
+        moved = { ...live, id: toSeatId, selectedForBatch: false };
+      } else {
+        closed = appendSessionRow(fromTbl, live, formatDateTime(new Date(now)), now, { amount: stack, busted: false });
+        moved = { ...clearSeat(dest), id: toSeatId, memberId: live.memberId, status: 'seated', lastActiveStart: now, buyInAmount: stack, sessionStart: formatDateTime(new Date(now)) };
+      }
       return prev.map((tb) => {
         if (tb.id !== from.id && tb.id !== to.id) return tb;
-        return { ...tb, seats: tb.seats.map((s) => {
+        return { ...tb, sessions: tb.id === from.id && closed ? [...tb.sessions, closed] : tb.sessions, seats: tb.seats.map((s) => {
           if (tb.id === to.id && s.id === toSeatId) return moved;
           if (tb.id === from.id && s.id === seat.id) return clearSeat(s);
           return s;
