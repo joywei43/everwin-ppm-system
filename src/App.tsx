@@ -207,6 +207,7 @@ const zhTexts = {
   noSuchTable: (n: string) => `找不到 ${n} 這張桌。`,
   targetNotRunning: (n: string) => `${n} 還沒開桌，請先開桌再換過去。`,
   seatTaken: (where: string, who: string) => `${where} 已經有人（${who}），請選其他位置。`,
+  confirmSwap: (a: string, ha: string, b: string, hb: string) => `${hb} 有人（${b}）。\n要把 ${a}（${ha}）和 ${b}（${hb}）對調位置嗎？\n兩人的時數和買碼都不變。`,
   promptMoveChips: (where: string) => `換到 ${where}。\n請輸入帶過去的總碼（玩家目前的籌碼）。`,
   btnBatchSeat: '批次上桌',
   btnBatchLeave: '批次下桌',
@@ -276,6 +277,7 @@ const enTexts = {
   noSuchTable: (n: string) => `There is no table ${n}.`,
   targetNotRunning: (n: string) => `${n} is not open yet. Open it first.`,
   seatTaken: (where: string, who: string) => `${where} is taken (${who}). Choose another seat.`,
+  confirmSwap: (a: string, ha: string, b: string, hb: string) => `${hb} is taken by ${b}.\nSwap ${a} (${ha}) and ${b} (${hb})?\nBoth keep their time and buy-in.`,
   promptMoveChips: (where: string) => `Moving to ${where}.\nEnter the total chips the player brings (their current stack).`,
   btnBatchSeat: 'Batch Seat',
   btnBatchLeave: 'Batch Leave',
@@ -759,8 +761,20 @@ const App: React.FC = () => {
     if (!to.isRunning) { window.alert(t.targetNotRunning(to.name)); return; }
     const target = to.seats.find((s) => s.id === toSeatId)!;
     const there = `${to.name} #${toSeatId}`;
-    if (target.status !== 'idle') { window.alert(t.seatTaken(there, target.memberId)); return; }
     const sameTable = to.id === from.id;
+    if (target.status !== 'idle') {
+      // Same table: offer to swap the two players; each keeps their own time and buy-in.
+      if (!sameTable) { window.alert(t.seatTaken(there, target.memberId)); return; }
+      if (!window.confirm(t.confirmSwap(seat.memberId, here, target.memberId, there))) return;
+      setNames((prev) => ({ ...prev, [from.id + ':' + seat.id]: '', [from.id + ':' + toSeatId]: '' }));
+      setTables((prev) => prev.map((tb) => {
+        if (tb.id !== from.id) return tb;
+        const a = tb.seats.find((x) => x.id === seat.id), b = tb.seats.find((x) => x.id === toSeatId);
+        if (!a || !b || a.status === 'idle' || b.status === 'idle') return tb;
+        return { ...tb, seats: tb.seats.map((x) => x.id === seat.id ? { ...b, id: seat.id, selectedForBatch: false } : x.id === toSeatId ? { ...a, id: toSeatId, selectedForBatch: false } : x) };
+      }));
+      return;
+    }
     // Another table: the player cashes out here with their stack and buys in there with the same chips,
     // so each table's records are right and the member's overall W/L still adds up.
     let stack = 0;
