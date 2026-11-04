@@ -78,7 +78,10 @@ export function message(tables, now, { filter = 'all', full = [], minPlayers = 0
           '',
           `TABLE ${table.id.slice(1)} ${table.stakes.replace(/\//g, '-')} ${table.game}`,
           '',
-          `${table.players} Players Seated`,
+          ...(table.nationalities?.some(row => row.nationality) ? table.nationalities.map(({nationality, count}) => {
+            const player = count === 1 ? 'Player' : 'Players';
+            return nationality ? `${count} ${nationality} ${player}` : `${count} ${player} (nationality not recorded)`;
+          }) : [`${table.players} Players Seated`]),
           `(${seats} ${seats === 1 ? 'SEAT' : 'SEATS'} OPEN)`,
         ];
       }),
@@ -159,6 +162,34 @@ async function leased(db,fn) {
   try{await fn();return true;}finally{await db.prepare('UPDATE bot_runtime SET lease=NULL,lease_until=0 WHERE id=1 AND lease=?').bind(token).run();}
 }
 
+// The member API returns only aggregate counts. A mismatch means PPM changed
+// between reads, so leave that table's lineup as a seat count.
+async function addNationalities(env, tables) {
+  if (!env.PPM_API || !env.TELEGRAM_LINEUP_KEY) return;
+  try {
+    const url = new URL('/internal/telegram-lineup', SOURCE);
+    const response = await env.PPM_API.fetch(url.href, {
+      headers: { 'X-Telegram-Lineup-Key': env.TELEGRAM_LINEUP_KEY },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    for (const [index, table] of tables.entries()) {
+      const lineup = data.tables.find(row => row.slot === index + 1);
+      if (lineup?.players !== table.players || lineup.game_type !== table.game ||
+          lineup.blinds?.replace(/\s/g, '') !== table.stakes || !Array.isArray(lineup.nationalities)) continue;
+      const counts = lineup.nationalities;
+      if (counts.length > table.capacity || !counts.every(row =>
+        typeof row.nationality === 'string' && row.nationality.length <= 60 &&
+        !/[\r\n]/.test(row.nationality) && Number.isInteger(row.count) && row.count > 0
+      ) || counts.reduce((sum, row) => sum + row.count, 0) !== table.players) continue;
+      table.nationalities = counts;
+    }
+  } catch {
+    console.warn('Telegram nationality lineup unavailable');
+  }
+}
+
 export async function poll(env) {
   const db=env.DB;
   if(await setting(db,'connected')!=='1')return;
@@ -168,6 +199,9 @@ export async function poll(env) {
       const tables=await source(env);
       const previous=JSON.parse((await db.prepare('SELECT data FROM bot_runtime WHERE id=1').first()).data);
       const event=transition(previous,tables,time);
+      if (event.group?.reason === 'periodic' || event.channel?.reason === 'periodic') {
+        await addNationalities(env, tables);
+      }
       const sequence=(previous.sequence||0)+1;
       event.state.sequence=sequence;
       const active=tables.some(t=>t.open);
@@ -347,7 +381,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.7',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.8',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);

@@ -15,8 +15,14 @@ test('poll separates group/channel cadence and acknowledges accepted delivery; n
   const DB=db(),env={DB,BOT_TOKEN:'test',OWNER_ID:'1'},old=global.fetch;
   DB.sql.exec("INSERT INTO bot_settings VALUES('connected','1'),('enabled','1'); INSERT INTO bot_destinations VALUES('-1','group','Players'),('-2','channel','Midori');");
   let live=state(4);const sent=[];
-  global.fetch=async(url,options)=>{
+  env.TELEGRAM_LINEUP_KEY='test-lineup-key';
+  env.PPM_API={async fetch(url,options){
     if(url.endsWith('/state'))return Response.json(live);
+    assert.equal(options.headers['X-Telegram-Lineup-Key'],env.TELEGRAM_LINEUP_KEY);
+    return Response.json({tables:[{slot:1,players:5,game_type:'NLH',blinds:'50 / 100',
+      nationalities:[{nationality:'Filipino',count:4},{nationality:'Taiwanese',count:1}]}]});
+  }};
+  global.fetch=async(url,options)=>{
     sent.push(JSON.parse(options.body));return Response.json({ok:true,result:{message_id:1}});
   };
   try {
@@ -28,6 +34,7 @@ test('poll separates group/channel cadence and acknowledges accepted delivery; n
     const saved=runtime(DB);saved.groupAt=Math.floor(Date.now()/1000)-3600;saved.channelAt=Math.floor(Date.now()/1000)-1800;
     DB.sql.prepare('UPDATE bot_runtime SET data=?').run(JSON.stringify(saved));
     await poll(env);assert.equal(sent.length,5);
+    for(const post of sent.slice(3))assert.match(post.text,/4 Filipino Players\n1 Taiwanese Player\n\(4 SEATS OPEN\)/);
   }finally{global.fetch=old;DB.sql.close();}
 });
 test('Telegram failure persists retry without advancing last successful notification',async()=>{

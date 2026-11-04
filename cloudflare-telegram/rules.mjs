@@ -78,7 +78,10 @@ export function message(tables, now, { filter = 'all', full = [], minPlayers = 0
           '',
           `TABLE ${table.id.slice(1)} ${table.stakes.replace(/\//g, '-')} ${table.game}`,
           '',
-          `${table.players} Players Seated`,
+          ...(table.nationalities?.some(row => row.nationality) ? table.nationalities.map(({nationality, count}) => {
+            const player = count === 1 ? 'Player' : 'Players';
+            return nationality ? `${count} ${nationality} ${player}` : `${count} ${player} (nationality not recorded)`;
+          }) : [`${table.players} Players Seated`]),
           `(${seats} ${seats === 1 ? 'SEAT' : 'SEATS'} OPEN)`,
         ];
       }),
