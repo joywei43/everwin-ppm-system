@@ -54,11 +54,40 @@ export function transition(previous = {}, tables, now) {
   };
 }
 
-export function message(tables, now, { filter = 'all', full = [], minPlayers = 0 } = {}) {
+export function message(tables, now, { filter = 'all', full = [], minPlayers = 0, periodic = false } = {}) {
   const date = new Date(now * 1000);
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Manila', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(p => [p.type,p.value]));
   const lines = ['EVEREST POKER LIVE TABLES', `TIME: ${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`, ''];
   const selected = tables.filter(t => t.open && t.players >= minPlayers && (filter === 'all' || t.game === filter));
+  if (periodic) {
+    const games = new Map();
+    for (const table of selected) {
+      const game = `${table.stakes.replace(/\//g, '-')} ${table.game}`;
+      games.set(game, (games.get(game) ?? 0) + 1);
+    }
+    return [
+      '🔥 THE ACTION IS ON AT EVEREST POKER! 🃏🔥',
+      'Check our Latest Update on website:',
+      'https://www.everestpokerroom.com/waiting-list/',
+      '',
+      ...Array.from(games, ([game, count]) => `${count} ${count === 1 ? 'TABLE' : 'TABLES'} ONGOING – ${game}`),
+      '👥 Current Lineup:',
+      ...selected.flatMap(table => {
+        const seats = table.capacity - table.players;
+        return [
+          '',
+          `TABLE ${table.id.slice(1)} ${table.stakes.replace(/\//g, '-')} ${table.game}`,
+          '',
+          `${table.players} Players Seated`,
+          `(${seats} ${seats === 1 ? 'SEAT' : 'SEATS'} OPEN)`,
+        ];
+      }),
+      '',
+      '🔥 Reserve your seat, players!',
+      'Come join the action at Everest Poker! 🃏♠️❤️♣️',
+      'Contact: @midoripokerroom',
+    ].join('\n');
+  }
   for (const t of selected) {
     lines.push(`${t.id} · ${t.game} ${t.stakes} · ${t.players}/${t.capacity} players${full.includes(t.id) ? ' · TABLE FULL' : ''}`);
   }

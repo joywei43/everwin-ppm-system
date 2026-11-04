@@ -72,11 +72,11 @@ export async function poll(env) {
         for(const r of subscribers) {
           if(!tables.some(t=>t.open&&t.players>=5&&(r.filter==='all'||r.filter===t.game)))continue;
           if(event.group.reason==='new-table'&&!tables.some(t=>event.group.tables.includes(t.id)&&(r.filter==='all'||r.filter===t.game)))continue;
-          statements.push(job(db,`group:${sequence}:${r.id}`,r.id,'group',message(tables,time,{filter:r.filter,minPlayers:5}),time));
+          statements.push(job(db,`group:${sequence}:${r.id}`,r.id,'group',message(tables,time,{filter:r.filter,minPlayers:5,periodic:event.group.reason==='periodic'}),time));
         }
-        for(const r of destinations.filter(r=>r.kind==='group'))statements.push(job(db,`group:${sequence}:${r.id}`,r.id,'group',message(tables,time,{minPlayers:5}),time));
+        for(const r of destinations.filter(r=>r.kind==='group'))statements.push(job(db,`group:${sequence}:${r.id}`,r.id,'group',message(tables,time,{minPlayers:5,periodic:event.group.reason==='periodic'}),time));
       }
-      if(eligible(event.channel,'channel'))for(const r of destinations.filter(r=>r.kind==='channel'))statements.push(job(db,`channel:${sequence}:${r.id}`,r.id,'channel',message(tables,time,{...event.channel,minPlayers:5}),time));
+      if(eligible(event.channel,'channel'))for(const r of destinations.filter(r=>r.kind==='channel'))statements.push(job(db,`channel:${sequence}:${r.id}`,r.id,'channel',message(tables,time,{...event.channel,minPlayers:5,periodic:event.channel.reason==='periodic'}),time));
       statements.push(db.prepare('UPDATE bot_runtime SET data=? WHERE id=1').bind(JSON.stringify(event.state)));
       await db.batch(statements);
     }
@@ -96,7 +96,7 @@ async function flush(env) {
     const payload=JSON.parse(r.payload);
     if(['group','channel'].includes(r.stream)) {
       const snapshot=JSON.parse((await db.prepare('SELECT data FROM bot_runtime WHERE id=1').first()).data);
-      const listed=[...payload.text.matchAll(/^(T[1235]) ·/gm)].map(m=>m[1]);
+      const listed=[...payload.text.matchAll(/^(?:T([1235]) ·|TABLE ([1235]) )/gm)].map(match=>`T${match[1] ?? match[2]}`);
       // Cancel stale queued snapshots when a listed table drops below the threshold.
       if(!listed.length || listed.some(id=>!snapshot.tables?.some(t=>t.id===id&&t.open&&t.players>=5))) {
         await db.prepare("UPDATE bot_jobs SET status='cancelled' WHERE id=?").bind(r.id).run();continue;
@@ -229,7 +229,7 @@ export default {
         return new Response(setupPage.replace('{{CSRF}}',csrf),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'Referrer-Policy':'same-origin','Set-Cookie':`__Host-everest_setup_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`}});
       }
       if(path==='/setup'&&req.method==='POST')return await setup(req,env);
-      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.6',setup:'/setup'});
+      if(path==='/'&&req.method==='GET')return json({service:'Everest Telegram',version:'2.0.7',setup:'/setup'});
       if(path==='/telegram'&&req.method==='POST') {
         const secret=await setting(env.DB,'webhook_secret');
         if(!secret||!await same(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',secret))return json({error:'Forbidden'},403);

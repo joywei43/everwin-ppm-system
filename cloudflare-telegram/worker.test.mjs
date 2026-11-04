@@ -138,7 +138,8 @@ test('automatic posts stop below five and stale retries are cancelled without ad
     DB.sql.prepare('UPDATE bot_runtime SET data=?').run(JSON.stringify(previous));
     live=state(4);await poll(env);assert.equal(sent.length,1);
     live=state(5);await poll(env);assert.equal(sent.length,3);
-    assert.ok(sent.slice(1).every(p=>p.text.includes('5/9 players')));
+    assert.match(sent.find(p=>p.chat_id==='-1' && p.text.includes('Current Lineup')).text,/1 TABLE ONGOING – 50-100 NLH[\s\S]*TABLE 1 50-100 NLH[\s\S]*5 Players Seated[\s\S]*4 SEATS OPEN/);
+    assert.match(sent.at(-1).text,/5\/9 players|5 Players Seated/);
   }finally{global.fetch=old;DB.sql.close();}
 });
 
