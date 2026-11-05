@@ -6,7 +6,7 @@ const React=require('react'),{create,act}=require('react-test-renderer');
 const mem=new Map([['ppm-session','test']]);global.sessionStorage={getItem:k=>mem.get(k),setItem:(k,v)=>mem.set(k,v),removeItem:k=>mem.delete(k)};
 let poll,resolveRead,delay=false,version=0,tables=[],writes=0,prompts=0,confirmation=true;
 global.window={setInterval:f=>{if(!poll)poll=f;return 1},clearInterval(){},prompt(){prompts++;return '2500'},confirm(){return confirmation},alert:m=>{throw Error(m)}};
-global.fetch=async(url,opts={})=>{if(url.endsWith('/state'))return {ok:true,json:async()=>({version:0,state:{queue:[],counters:{'50 / 100 NLH':1},calls:{}}})};if(opts.method==='PUT'){writes++;const b=JSON.parse(opts.body);assert.equal(b.version,version);tables=b.tables;return {ok:true,json:async()=>({version:++version,tables})}}if(delay)await new Promise(r=>resolveRead=r);return {ok:true,json:async()=>({version,tables})}};
+global.fetch=async(url,opts={})=>{if(/\/members\/|\/sessions\//.test(url))return {ok:false,json:async()=>({})};if(url.endsWith('/state'))return {ok:true,json:async()=>({version:0,state:{queue:[],counters:{'50 / 100 NLH':1},calls:{}}})};if(opts.method==='PUT'){writes++;const b=JSON.parse(opts.body);assert.equal(b.version,version);tables=b.tables;return {ok:true,json:async()=>({version:++version,tables})}}if(delay)await new Promise(r=>resolveRead=r);return {ok:true,json:async()=>({version,tables})}};
 const App=require('/tmp/ppm-app-test.cjs').default;
 const flush=()=>new Promise(r=>setImmediate(r));
 (async()=>{let app;await act(async()=>{app=create(React.createElement(App));await flush()});const button=text=>app.root.findAllByType('button').find(b=>b.children.join('')===text);

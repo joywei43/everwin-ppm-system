@@ -3,7 +3,8 @@ import MemberInput from './MemberInput';
 import CashOutDialog, { CashOutSeat, CashOutResult } from './CashOutDialog';
 import UpdateBanner from './UpdateBanner';
 import LevelDialog, { GAME_TYPES, BLINDS } from './LevelDialog';
-import { useCloudTables, CloudLogin } from './cloud';
+import { useCloudTables, CloudLogin, resolveMember, closeCheck, memberPhoto, MemberBrief } from './cloud';
+import NameCheckDialog from './NameCheckDialog';
 import React, { useEffect, useMemo, useState } from 'react';
 
 type SeatStatus = 'idle' | 'seated' | 'rest';
@@ -220,8 +221,13 @@ const zhTexts = {
   batchPromptChips: '請輸入本次上桌每位玩家的買入籌碼（金額，可為 0）',
   invalidNumber: '請輸入正確的數字。',
   confirmMove: (memberId: string, fromSeat: number, toSeat: number) =>
-    `會員 ${memberId} 目前在席次 ${fromSeat}，要移動到席次 ${toSeat} 嗎？`,
+    `⚠ ${memberId} 已經坐在 ${fromSeat} 號位。\n確定要把他移到 ${toSeat} 號位嗎？\n\n如果 ${toSeat} 號位是另一位客人，請按取消，確認名字後再上桌。`,
   confirmReset: '確定要重置本桌所有資料嗎？系統會先自動匯出一份 CSV。',
+  closeCheckTitle: (tb: string) => `${tb} 關桌前請先確認：`,
+  closeUnmatched: '沒有對到會員（請到後台 Unmatched PPM 連結）：',
+  closeMissingCash: '還沒有結碼金額：',
+  closeAnyway: '\n按「確定」照樣關桌，按「取消」先去處理。',
+  batchUnknown: (names: string) => `下面的名字對不到會員：\n${names}\n\n按「確定」以訪客身分上桌，按「取消」回去改名字。`,
   confirmBatchLeave: '確定要將勾選的席次全部下桌並寫入紀錄嗎？',
   csvHeaderDate: '日期',
   csvHeaderTable: '桌號',
@@ -290,8 +296,13 @@ const enTexts = {
   batchPromptChips: 'Enter buy-in amount for each selected player (can be 0).',
   invalidNumber: 'Please enter a valid number.',
   confirmMove: (memberId: string, fromSeat: number, toSeat: number) =>
-    `Member ${memberId} is currently seated at Seat ${fromSeat}. Move to Seat ${toSeat}?`,
+    `⚠ ${memberId} is already at Seat ${fromSeat}.\nMove them to Seat ${toSeat}?\n\nIf Seat ${toSeat} is a different player, press Cancel and check the name.`,
   confirmReset: 'Reset this table and clear all data? A CSV will be exported first.',
+  closeCheckTitle: (tb: string) => `Before closing ${tb}, please check:`,
+  closeUnmatched: 'Not matched to a member (link them in Unmatched PPM):',
+  closeMissingCash: 'No cash-out yet:',
+  closeAnyway: '\nOK = close anyway, Cancel = fix first.',
+  batchUnknown: (names: string) => `These names are not members:\n${names}\n\nOK = seat them as guests, Cancel = fix the names.`,
   confirmBatchLeave: 'Leave all selected seats and write their sessions?',
   csvHeaderDate: 'Date',
   csvHeaderTable: 'Table',
@@ -458,11 +469,19 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleStop = () => {
+  const handleStop = async () => {
     if (!currentTable) return;
     if (hasActivePlayers(currentTable)) {
       window.alert(t.tableHasPlayers);
       return;
+    }
+    const check = await closeCheck(currentTable.name);
+    if (check && (check.unmatched.length || check.missing_cash_out.length)) {
+      const lines = [t.closeCheckTitle(currentTable.name)];
+      if (check.unmatched.length) lines.push('', t.closeUnmatched, ...check.unmatched.map((x) => `· ${t.seat} ${x.seat}: ${x.ref}`));
+      if (check.missing_cash_out.length) lines.push('', t.closeMissingCash, ...check.missing_cash_out.map((x) => `· ${t.seat} ${x.seat}: ${x.ref}`));
+      lines.push(t.closeAnyway);
+      if (!window.confirm(lines.join('\n'))) return;
     }
     const now = Date.now();
     const closedAtStr = formatDateTime(new Date());
@@ -592,7 +611,24 @@ const App: React.FC = () => {
     memberId: '',
   });
 
-  const handleSeatUp = (seatId: number) => {
+  // Seat-up asks first when the typed name is not a member (typos like "NSH" for NASH).
+  const [nameCheck, setNameCheck] = useState<null | { ref: string; suggestions: MemberBrief[]; done: (v: string | null) => void }>(null);
+  const askName = (ref: string, suggestions: MemberBrief[]) => new Promise<string | null>((done) => setNameCheck({ ref, suggestions, done }));
+  const handleSeatUp = async (seatId: number) => {
+    if (!currentTable) return;
+    const tbl = currentTable;
+    const seat = tbl.seats.find((s) => s.id === seatId);
+    if (!seat || seat.status !== 'idle' || !tbl.isRunning || !seat.memberId.trim()) { seatUp(seatId); return; }
+    let name = seat.memberId.trim();
+    const r = await resolveMember(name);
+    if (r && !r.member) {
+      const choice = await askName(name, r.suggestions);
+      if (choice === null) return;
+      if (choice !== '\u0000guest') { name = choice; setNames((prev) => ({ ...prev, [tbl.id + ':' + seatId]: choice })); }
+    }
+    seatUp(seatId, name);
+  };
+  const seatUp = (seatId: number, nameOverride?: string) => {
     if (!currentTable) return;
     const tbl = currentTable;
 
@@ -604,7 +640,7 @@ const App: React.FC = () => {
     const seat = tbl.seats.find((s) => s.id === seatId);
     if (!seat) return;
 
-    const memberId = seat.memberId.trim();
+    const memberId = (nameOverride ?? seat.memberId).trim();
     if (!memberId) {
       window.alert(t.needMemberId);
       return;
@@ -648,6 +684,7 @@ const App: React.FC = () => {
             activeSeconds: 0,
             restSeconds: 0,
             sessionStart: formatDateTime(new Date()),
+            memberId,
             transferNote: `Transfer-Seat${existing.id}`,
           };
         });
@@ -835,7 +872,7 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleBatchSeat = () => {
+  const handleBatchSeat = async () => {
     if (!currentTable) return;
     const tbl = currentTable;
     if (!tbl.isRunning) {
@@ -858,6 +895,13 @@ const App: React.FC = () => {
         return;
       }
     }
+    const idleNames = selected.filter((s) => s.status === 'idle').map((s) => ({ seat: s.id, name: s.memberId.trim() }));
+    const unknown: string[] = [];
+    for (const x of idleNames) {
+      const r = await resolveMember(x.name);
+      if (r && !r.member) unknown.push(`${t.seat} ${x.seat}: ${x.name}${r.suggestions[0] ? ` → ${r.suggestions[0].nickname || r.suggestions[0].name} (${r.suggestions[0].member_no})?` : ''}`);
+    }
+    if (unknown.length && !window.confirm(t.batchUnknown(unknown.join('\n')))) return;
     const raw = window.prompt(t.batchPromptChips, '0');
     if (raw == null) return;
     const amt = Number(raw);
@@ -926,6 +970,8 @@ const App: React.FC = () => {
       {cloud.notice && <div className={'sync-notice ' + cloud.notice.kind} role="status">{cloud.notice.text}</div>}
       {levelOpen && currentTable && <LevelDialog table={currentTable.name} gameType={currentTable.gameType} blinds={currentTable.blinds} lang={lang} onCancel={() => setLevelOpen(false)}
         onConfirm={(g, b) => { const id = currentTable.id; setLevelOpen(false); updateTable(id, (tb) => ({ ...tb, gameType: g, blinds: b })); }} />}
+      {nameCheck && <NameCheckDialog refName={nameCheck.ref} suggestions={nameCheck.suggestions} lang={lang}
+        onPick={(label) => { const d = nameCheck.done; setNameCheck(null); d(label); }} onGuest={() => { const d = nameCheck.done; setNameCheck(null); d('\u0000guest'); }} onCancel={() => { const d = nameCheck.done; setNameCheck(null); d(null); }} />}
       {cashOut && <CashOutDialog seats={cashOut.seats} lang={lang} onCancel={() => setCashOut(null)} onConfirm={(r) => { const done = cashOut.onConfirm; setCashOut(null); done(r); }} />}
       <fieldset disabled={cloud.busy} style={{border:0,padding:0,margin:0}}>
       <div className="app-shell">
@@ -1085,6 +1131,7 @@ const App: React.FC = () => {
                           {t.seat} {seat.id}
                         </span>
                       </div>
+                      {seat.status !== 'idle' && <SeatPhoto memberId={seat.memberId} rest={seat.status === 'rest'} />}
                       <div className={`seat-status-tag ${statusClass}`}>{statusLabel}</div>
                     </div>
                     <div className="seat-timer">{formatHMS(activeSeconds)}</div>
@@ -1187,3 +1234,13 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+// Member photo on an occupied seat card, so staff can match the face to the seat.
+function SeatPhoto(props: { memberId: string; rest: boolean }) {
+  const m = /\((?:EV-?)?(\d{6})\)\s*$/i.exec(props.memberId) || /^(?:EV-?)?(\d{6})$/i.exec(props.memberId.trim());
+  const no = m ? 'EV-' + m[1] : '';
+  const [src, setSrc] = React.useState<string | null>(null);
+  React.useEffect(() => { let live = true; setSrc(null); if (no) memberPhoto(no).then((p) => { if (live) setSrc(p); }); return () => { live = false; }; }, [no]);
+  if (!src) return null;
+  return <img className={'seat-photo' + (props.rest ? ' rest' : '')} src={src} alt="" />;
+}

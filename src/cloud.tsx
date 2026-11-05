@@ -90,3 +90,38 @@ export async function searchMembers(q: string): Promise<MemberHit[]> {
     return Array.isArray(data.members) ? data.members : [];
   } catch { return []; }
 }
+
+export interface MemberBrief { member_no: string; nickname: string; name: string; nationality?: string; status?: string; }
+// Is the typed name a member? Returns null when the check cannot run (offline), so seating never gets stuck.
+export async function resolveMember(ref: string): Promise<{ member: MemberBrief | null; suggestions: MemberBrief[] } | null> {
+  const token = sessionStorage.getItem('ppm-session');
+  if (!token || !ref.trim()) return null;
+  try {
+    const res = await fetch(API + '/members/resolve?ref=' + encodeURIComponent(ref.trim()), { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j && Array.isArray(j.suggestions) ? j : null;
+  } catch { return null; }
+}
+// Before closing a table: players not matched to a member and sessions without a cash-out.
+export async function closeCheck(table: string): Promise<{ unmatched: { seat: number; ref: string; left: boolean }[]; missing_cash_out: { seat: number; ref: string }[] } | null> {
+  const token = sessionStorage.getItem('ppm-session');
+  if (!token) return null;
+  try {
+    const res = await fetch(API + '/sessions/close-check?table=' + encodeURIComponent(table), { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j && Array.isArray(j.unmatched) && Array.isArray(j.missing_cash_out) ? j : null;
+  } catch { return null; }
+}
+// Member photos for the seat cards (cached; null when the member has no photo).
+const photoCache = new Map<string, Promise<string | null>>();
+export function memberPhoto(no: string): Promise<string | null> {
+  const token = sessionStorage.getItem('ppm-session');
+  if (!token) return Promise.resolve(null);
+  if (!photoCache.has(no)) {
+    photoCache.set(no, fetch(API + '/members/' + encodeURIComponent(no) + '/photo', { headers: { Authorization: 'Bearer ' + token } })
+      .then(async (r) => (r.ok ? (await r.json()).data || null : null)).catch(() => null));
+  }
+  return photoCache.get(no)!;
+}
