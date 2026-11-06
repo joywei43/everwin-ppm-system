@@ -623,6 +623,11 @@ html {
 .nc-pick:hover, .nc-pick:focus-visible { background: rgba(34,197,94,0.25); }
 .nc-no { font-family: ui-monospace, monospace; opacity: 0.8; font-size: 13px; }
 .nc-sub { width: 100%; font-size: 12px; opacity: 0.7; }
+.nc-sub:empty { display: none; }
+.nc-add { width: 100%; margin-top: 10px; background: rgba(59,130,246,0.14); border: 1px dashed rgba(96,165,250,0.8); color: var(--text-main); border-radius: 12px; padding: 12px 14px; cursor: pointer; font-size: 15px; font-weight: 700; text-align: left; }
+.nc-add:hover, .nc-add:focus-visible { background: rgba(59,130,246,0.26); }
+.nc-field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; margin-bottom: 12px; }
+.nc-field select.cash-input { font-size: 17px; }
 /* Member photo on the seat card */
 .seat-photo { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(34,197,94,0.8); flex: none; }
 .seat-photo.rest { border-color: rgba(234,179,8,0.9); }

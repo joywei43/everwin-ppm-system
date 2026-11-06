@@ -103,6 +103,31 @@ export async function resolveMember(ref: string): Promise<{ member: MemberBrief 
     return j && Array.isArray(j.suggestions) ? j : null;
   } catch { return null; }
 }
+export interface GroupOpt { id: string; name: string; label?: string | null; }
+// Player groups for the quick-add form (retired groups left out).
+export async function fetchGroups(): Promise<GroupOpt[]> {
+  const token = sessionStorage.getItem('ppm-session');
+  if (!token) return [];
+  try {
+    const res = await fetch(API + '/groups', { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) return [];
+    const j = await res.json();
+    return Array.isArray(j.groups) ? j.groups.filter((g: any) => g.active !== 0).map((g: any) => ({ id: g.id, name: g.name, label: g.label || null })) : [];
+  } catch { return []; }
+}
+export type QuickAddResult = { member_no: string } | { duplicates: (MemberBrief & { why?: string[] })[] } | { error: string };
+// Add a new member at the table: nickname, nationality and group; the rest is filled in later in the admin console.
+export async function quickAddMember(body: { nickname: string; nationality: string; group_id: string; where: string; confirm_duplicate?: boolean }): Promise<QuickAddResult> {
+  const token = sessionStorage.getItem('ppm-session');
+  if (!token) return { error: 'Not signed in.' };
+  try {
+    const res = await fetch(API + '/members', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, quick: true }) });
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 409 && j.code === 'possible_duplicate') return { duplicates: j.matches || [] };
+    if (!res.ok || !j.member_no) return { error: j.error || 'Could not add the member (' + res.status + ').' };
+    return { member_no: j.member_no };
+  } catch { return { error: 'No connection. Seat as guest and add the member later.' }; }
+}
 // Before closing a table: players not matched to a member and sessions without a cash-out.
 export async function closeCheck(table: string): Promise<{ unmatched: { seat: number; ref: string; left: boolean }[]; missing_cash_out: { seat: number; ref: string }[] } | null> {
   const token = sessionStorage.getItem('ppm-session');

@@ -612,8 +612,8 @@ const App: React.FC = () => {
   });
 
   // Seat-up asks first when the typed name is not a member (typos like "NSH" for NASH).
-  const [nameCheck, setNameCheck] = useState<null | { ref: string; suggestions: MemberBrief[]; done: (v: string | null) => void }>(null);
-  const askName = (ref: string, suggestions: MemberBrief[]) => new Promise<string | null>((done) => setNameCheck({ ref, suggestions, done }));
+  const [nameCheck, setNameCheck] = useState<null | { ref: string; where: string; suggestions: MemberBrief[]; done: (v: string | null) => void }>(null);
+  const askName = (ref: string, where: string, suggestions: MemberBrief[]) => new Promise<string | null>((done) => setNameCheck({ ref, where, suggestions, done }));
   const handleSeatUp = async (seatId: number) => {
     if (!currentTable) return;
     const tbl = currentTable;
@@ -622,7 +622,7 @@ const App: React.FC = () => {
     let name = seat.memberId.trim();
     const r = await resolveMember(name);
     if (r && !r.member) {
-      const choice = await askName(name, r.suggestions);
+      const choice = await askName(name, `${tbl.name || 'T' + tbl.id} #${seatId}`, r.suggestions);
       if (choice === null) return;
       if (choice !== '\u0000guest') { name = choice; setNames((prev) => ({ ...prev, [tbl.id + ':' + seatId]: choice })); }
     }
@@ -970,7 +970,7 @@ const App: React.FC = () => {
       {cloud.notice && <div className={'sync-notice ' + cloud.notice.kind} role="status">{cloud.notice.text}</div>}
       {levelOpen && currentTable && <LevelDialog table={currentTable.name} gameType={currentTable.gameType} blinds={currentTable.blinds} lang={lang} onCancel={() => setLevelOpen(false)}
         onConfirm={(g, b) => { const id = currentTable.id; setLevelOpen(false); updateTable(id, (tb) => ({ ...tb, gameType: g, blinds: b })); }} />}
-      {nameCheck && <NameCheckDialog refName={nameCheck.ref} suggestions={nameCheck.suggestions} lang={lang}
+      {nameCheck && <NameCheckDialog refName={nameCheck.ref} where={nameCheck.where} suggestions={nameCheck.suggestions} lang={lang}
         onPick={(label) => { const d = nameCheck.done; setNameCheck(null); d(label); }} onGuest={() => { const d = nameCheck.done; setNameCheck(null); d('\u0000guest'); }} onCancel={() => { const d = nameCheck.done; setNameCheck(null); d(null); }} />}
       {cashOut && <CashOutDialog seats={cashOut.seats} lang={lang} onCancel={() => setCashOut(null)} onConfirm={(r) => { const done = cashOut.onConfirm; setCashOut(null); done(r); }} />}
       <fieldset disabled={cloud.busy} style={{border:0,padding:0,margin:0}}>
