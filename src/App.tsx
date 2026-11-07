@@ -5,7 +5,7 @@ import UpdateBanner from './UpdateBanner';
 import LevelDialog, { GAME_TYPES, BLINDS } from './LevelDialog';
 import { useCloudTables, CloudLogin, resolveMember, closeCheck, memberPhoto, MemberBrief } from './cloud';
 import NameCheckDialog from './NameCheckDialog';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 type SeatStatus = 'idle' | 'seated' | 'rest';
 type Lang = 'zh' | 'en';
@@ -347,6 +347,15 @@ const App: React.FC = () => {
     [tables, currentTableId],
   );
   const currentTable = withNames(tables[currentTableIndex] ?? tables[0]);
+  // On sign-in or page reload, open the table that is running (the first one if several), so staff never start on an idle table by mistake.
+  const autoPicked = useRef(false);
+  useEffect(() => {
+    if (!cloud.ready) { autoPicked.current = false; return; }
+    if (autoPicked.current) return;
+    autoPicked.current = true;
+    const running = tables.filter((tbl) => tbl.isRunning);
+    if (running.length && !running.some((tbl) => tbl.id === currentTableId)) setCurrentTableId(running[0].id);
+  }, [cloud.ready, tables, currentTableId]);
 
   const updateTable = (tableId: number, updater: (t: TableState) => TableState) => {
     setTables((prev) => prev.map((tbl) => (tbl.id === tableId ? updater(withNames(tbl)) : tbl)));
