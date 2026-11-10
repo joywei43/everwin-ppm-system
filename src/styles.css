@@ -200,6 +200,47 @@ body {
   transform: translateY(-1px);
 }
 
+.table-map {
+  position: relative;
+  width: 100%;
+  max-width: 330px;
+  aspect-ratio: 1.42;
+  margin: 10px auto 0;
+  border-radius: 16px;
+  background: #c9963f;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+}
+.tm-table {
+  position: absolute;
+  width: 46%;
+  height: 31%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+.tm-table:hover { transform: translateY(-1px); }
+.tm-felt {
+  position: absolute;
+  inset: 6% 3%;
+  border-radius: 999px;
+  background: #1c1c1e;
+  box-shadow: 0 0 0 4px #e9d49a, 0 0 0 6px #b48a3c, 0 5px 10px rgba(0,0,0,0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: #fff;
+}
+.tm-name { font-size: clamp(16px, 4.6vw, 24px); font-weight: 700; letter-spacing: 0.12em; line-height: 1; }
+.tm-info { font-size: 11px; color: #cbd5e1; white-space: nowrap; }
+.tm-running .tm-felt { box-shadow: 0 0 0 4px #e9d49a, 0 0 0 6px #b48a3c, 0 0 0 9px rgba(34,197,94,0.85), 0 5px 10px rgba(0,0,0,0.35); }
+.tm-active .tm-felt { box-shadow: 0 0 0 4px #e9d49a, 0 0 0 6px #b48a3c, 0 0 0 10px #3b82f6, 0 0 22px rgba(59,130,246,0.9); }
+.tm-dot { position: absolute; top: 4%; right: 8%; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 2px #1c1c1e; }
+.tm-table:focus-visible { outline: 3px solid #fff; outline-offset: 2px; border-radius: 999px; }
+
 .table-clock-wrapper {
   margin-top: 8px;
   padding: 18px 16px 16px;

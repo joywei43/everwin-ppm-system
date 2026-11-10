@@ -3,6 +3,7 @@ import MemberInput from './MemberInput';
 import CashOutDialog, { CashOutSeat, CashOutResult } from './CashOutDialog';
 import UpdateBanner from './UpdateBanner';
 import LevelDialog, { GAME_TYPES, BLINDS } from './LevelDialog';
+import TableMap from './TableMap';
 import { useCloudTables, CloudLogin, resolveMember, closeCheck, memberPhoto, MemberBrief } from './cloud';
 import NameCheckDialog from './NameCheckDialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -1041,6 +1042,7 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
+            <TableMap tables={tables} currentId={currentTableId} onPick={setCurrentTableId} />
 
             <div className="table-clock-wrapper">
               <div className="clock-title-row">
