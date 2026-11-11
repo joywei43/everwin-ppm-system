@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS bot_runtime (
+ id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL DEFAULT '{}',
+ lease TEXT, lease_until INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO bot_runtime(id) VALUES(1);
+CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS bot_subscribers (id TEXT PRIMARY KEY,filter TEXT NOT NULL CHECK(filter IN ('all','NLH','PLO','off')));
+CREATE TABLE IF NOT EXISTS bot_destinations (id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN ('group','channel')),title TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS bot_updates (id INTEGER PRIMARY KEY,created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS bot_jobs (
+ id TEXT PRIMARY KEY, target TEXT NOT NULL, stream TEXT NOT NULL,
+ method TEXT NOT NULL DEFAULT 'sendMessage', payload TEXT NOT NULL,
+ created INTEGER NOT NULL, due INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+ status TEXT NOT NULL DEFAULT 'pending', error TEXT
+);
+CREATE INDEX IF NOT EXISTS bot_jobs_due ON bot_jobs(status,due);
