@@ -51,6 +51,8 @@ export function useCloudTables(initial: () => TableState[]) {
     return () => { disposed = true; clearInterval(id); };
   }, [token, receive]);
   const setTables: React.Dispatch<React.SetStateAction<TableState[]>> = (change) => {
+    // Senior Dealer accounts can watch the tables but not change them.
+    if (sessionStorage.getItem('ppm-role') === 'senior') { setMessage('唯讀帳號 Read only (Senior Dealer) · 無法修改'); return; }
     if (locked.current) { setMessage('Sync in progress. Please retry.'); return; }
     locked.current = true; setBusy(true); setMessage('Saving…');
     (async () => {
@@ -66,10 +68,12 @@ export function useCloudTables(initial: () => TableState[]) {
   };
   const login = async (username: string, password: string) => {
     setBusy(true);
-    try { const data = await request('/login','POST',{username:username.trim(),password},'');sessionStorage.setItem('ppm-session',data.token);if(data.user)sessionStorage.setItem('ppm-user',data.user);setToken(data.token);setMessage('Connecting…'); }
+    try { const data = await request('/login','POST',{username:username.trim(),password},'');
+      if (data.role === 'dealer') { await fetch(API + '/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + data.token } }).catch(() => {}); setMessage('Dealer accounts can only use the insurance app. 荷官帳號只能使用保險系統。'); return; }
+      sessionStorage.setItem('ppm-role', data.role || '');sessionStorage.setItem('ppm-session',data.token);if(data.user)sessionStorage.setItem('ppm-user',data.user);setToken(data.token);setMessage('Connecting…'); }
     catch(e){setMessage((e as Error).message);}finally{setBusy(false);}
   };
-  const logout = async () => {try {await request('/logout','POST',{});}finally{sessionStorage.removeItem('ppm-session');sessionStorage.removeItem('ppm-user');setToken('');setReady(false);}};
+  const logout = async () => {try {await request('/logout','POST',{});}finally{sessionStorage.removeItem('ppm-session');sessionStorage.removeItem('ppm-user');sessionStorage.removeItem('ppm-role');setToken('');setReady(false);}};
   return {tables,setTables,ready,busy,message,notice,login,logout};
 }
 export function CloudLogin({cloud}:{cloud:ReturnType<typeof useCloudTables>}) {
