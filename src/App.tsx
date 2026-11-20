@@ -6,6 +6,7 @@ import LevelDialog, { GAME_TYPES, BLINDS } from './LevelDialog';
 import TableMap from './TableMap';
 import { useCloudTables, CloudLogin, resolveMember, closeCheck, memberPhoto, MemberBrief } from './cloud';
 import NameCheckDialog from './NameCheckDialog';
+import { gameOf, nextFor, removeSeated, WaitEntry } from './waitlist';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 type SeatStatus = 'idle' | 'seated' | 'rest';
@@ -331,6 +332,11 @@ const App: React.FC = () => {
   const [nowMs, setNowMs] = useState(Date.now());
   const [names, setNames] = useState<Record<string,string>>({});
   const [levelOpen, setLevelOpen] = useState(false);
+  // Waiting list: a seat opened → tell the floor whom to call; a player sat down → take them off the waiting list.
+  const [waitNotice, setWaitNotice] = useState<null | { table: string; game: string; next: WaitEntry | null }>(null);
+  const seatedNames = useMemo(() => tables.flatMap((tb) => tb.seats.filter((s) => s.status !== 'idle' && s.memberId.trim()).map((s) => s.memberId.trim())), [tables]);
+  const seatedKey = seatedNames.slice().sort().join('|');
+  useEffect(() => { if (seatedNames.length && sessionStorage.getItem('ppm-session')) removeSeated(seatedNames).catch(() => {}); }, [seatedKey]);
   const [cashOut, setCashOut] = useState<null | { seats: CashOutSeat[]; onConfirm: (r: Record<number, CashOutResult>) => void }>(null);
   const withNames = (tbl: TableState): TableState => ({...tbl,seats:tbl.seats.map(seat=>seat.status === 'idle' ? {...seat,memberId:names[tbl.id+':'+seat.id] ?? seat.memberId}:seat)});
 
@@ -779,6 +785,11 @@ const App: React.FC = () => {
       });
       return { ...tbl, seats, sessions };
     });
+    const tb = tables.find((x) => x.id === tableId);
+    if (tb && tb.isRunning) {
+      const game = gameOf(tb), table = tb.name || 'T' + tb.id;
+      nextFor(game).then((next) => setWaitNotice({ table, game, next })).catch(() => {});
+    }
   };
 
   const handleLeave = (seatId: number) => {
@@ -982,6 +993,18 @@ const App: React.FC = () => {
         onConfirm={(g, b) => { const id = currentTable.id; setLevelOpen(false); updateTable(id, (tb) => ({ ...tb, gameType: g, blinds: b })); }} />}
       {nameCheck && <NameCheckDialog refName={nameCheck.ref} where={nameCheck.where} suggestions={nameCheck.suggestions} lang={lang}
         onPick={(label) => { const d = nameCheck.done; setNameCheck(null); d(label); }} onGuest={() => { const d = nameCheck.done; setNameCheck(null); d('\u0000guest'); }} onCancel={() => { const d = nameCheck.done; setNameCheck(null); d(null); }} />}
+      {waitNotice && (
+        <div className="cash-backdrop" role="dialog" aria-modal="true" aria-label="Waiting list">
+          <div className="cash-dialog" style={{ maxWidth: 420 }}>
+            <h3 style={{ marginTop: 0 }}>{lang === 'zh' ? '有空位了' : 'A seat is open'} · {waitNotice.table} {waitNotice.game}</h3>
+            {waitNotice.next ? (<>
+              <p>{lang === 'zh' ? '請通知下一位等候會員：' : 'Please call the next waiting member:'}</p>
+              <p style={{ fontSize: '1.5em', fontWeight: 700, margin: '8px 0 16px' }}>#{waitNotice.next.num} {waitNotice.next.name}</p>
+            </>) : <p>{lang === 'zh' ? '這個級別目前沒有人在等候。' : 'No one is waiting for this game.'}</p>}
+            <div className="cash-actions"><button type="button" className="seat-btn" autoFocus onClick={() => setWaitNotice(null)}>{lang === 'zh' ? '確認' : 'OK'}</button></div>
+          </div>
+        </div>
+      )}
       {cashOut && <CashOutDialog seats={cashOut.seats} lang={lang} onCancel={() => setCashOut(null)} onConfirm={(r) => { const done = cashOut.onConfirm; setCashOut(null); done(r); }} />}
       <fieldset disabled={cloud.busy} style={{border:0,padding:0,margin:0}}>
       <div className="app-shell">
@@ -1237,7 +1260,7 @@ const App: React.FC = () => {
             </div>
           </section>
         </main>
-        <Queue />
+        <Queue seated={seatedNames} />
       </div>
       </fieldset>
     </div>
