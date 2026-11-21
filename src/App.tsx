@@ -218,7 +218,7 @@ const zhTexts = {
   promptMoveChips: (where: string) => `換到 ${where}。\n請輸入帶過去的總碼（玩家目前的籌碼）。`,
   btnBatchSeat: '批次上桌',
   btnBatchLeave: '批次下桌',
-  tableHasPlayers: '仍有玩家在桌上（非休息），請先讓所有玩家下桌。',
+  tableHasPlayers: '仍有玩家在遊戲中。請先讓他們休息或按 Cash Out Request。',
   tableNotRunning: '請先運行開桌，再為玩家上桌。',
   needMemberId: '請先輸入名稱或會員號碼再上桌。',
   duplicateMember: '同一位會員已在本桌其他位置上桌，請先處理座位移動。',
@@ -293,7 +293,7 @@ const enTexts = {
   promptMoveChips: (where: string) => `Moving to ${where}.\nEnter the total chips the player brings (their current stack).`,
   btnBatchSeat: 'Batch Seat',
   btnBatchLeave: 'Batch Leave',
-  tableHasPlayers: 'There are still players seated (not resting). Please let them leave first.',
+  tableHasPlayers: 'Some players are still playing. Put them on Rest or press Cash Out Request first.',
   tableNotRunning: 'Please start the table clock before seating players.',
   needMemberId: 'Please enter a name or member ID before seating.',
   duplicateMember: 'This member is already seated at another position. Please handle seat move first.',
@@ -376,8 +376,10 @@ const App: React.FC = () => {
     setTables((prev) => prev.map((tbl) => (tbl.id === tableId ? updater(withNames(tbl)) : tbl)));
   };
 
+  // Only players still in play block Pause / Close. Rest and Cash Out Request (clock already stopped) do not;
+  // their seats stay until the cage cashes them out.
   const hasActivePlayers = (tbl: TableState): boolean =>
-    tbl.seats.some((s) => s.status !== 'idle');
+    tbl.seats.some((s) => s.status === 'seated' && !s.cashoutAsked);
 
   const handleStartOrResume = () => {
     if (!currentTable) return;

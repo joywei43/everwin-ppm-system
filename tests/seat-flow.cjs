@@ -48,7 +48,12 @@ await act(async()=>{button('⇄ 換位').props.onClick();await flush()});assert.
 // Cash-out ready tells the cage; pressing again cancels.
 // Cash Out Request: the clock stops like Rest; cancel puts the player back in play.
 await act(async()=>{button('Cash Out Request').props.onClick();await flush()});assert.equal(tables[0].seats[0].cashoutAsked.by,'Phoebe');assert.equal(tables[0].seats[0].status,'rest');assert.equal(tables[0].seats[0].lastActiveStart,null);assert.ok(!button('回座')&&!button('休息'),'no Rest/Back during a request');
+// Everyone on Cash Out Request: the table can pause (and resume).
+await act(async()=>{button('暫停牌桌').props.onClick();await flush()});assert.equal(tables[0].isRunning,false,'pause allowed when all players requested cash-out');
+await act(async()=>{button('開桌 / 繼續').props.onClick();await flush()});assert.equal(tables[0].isRunning,true);
 await act(async()=>{button('取消 Cash Out Request').props.onClick();await flush()});assert.equal(tables[0].seats[0].cashoutAsked,null);assert.equal(tables[0].seats[0].status,'seated');assert.ok(tables[0].seats[0].lastActiveStart);
+// A player still in play blocks the pause.
+{let msg='';const al=window.alert;window.alert=m=>{msg=m};await act(async()=>{button('暫停牌桌').props.onClick();await flush()});window.alert=al;assert.ok(msg,'warned');assert.equal(tables[0].isRunning,true);}
 // Change level: a dialog confirms the new game and blinds.
 {await act(async()=>button('換級別').props.onClick());const lf=()=>app.root.findAllByType('form').find(f=>f.props.className==='cash-dialog level-dialog');assert.ok(lf());
 await act(async()=>lf().findAllByType('select')[0].props.onChange({target:{value:'PLO'}}));await act(async()=>{lf().props.onSubmit({preventDefault(){}});await flush()});assert.ok(!lf());assert.equal(tables[0].gameType,'PLO');}
