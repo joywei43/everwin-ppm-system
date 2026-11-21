@@ -672,3 +672,28 @@ html {
 /* Member photo on the seat card */
 .seat-photo { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(34,197,94,0.8); flex: none; }
 .seat-photo.rest { border-color: rgba(234,179,8,0.9); }
+
+/* Cage → PPM: seat a player who bought in at the cage */
+.cage-seat-dialog { max-width: 440px; border: 2px solid #FAC775; }
+.cage-seat-kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #FAC775; font-weight: 800; }
+.cage-seat-who { display: flex; gap: 12px; align-items: center; margin: 12px 0 6px; }
+.cage-seat-photo { width: 64px; height: 64px; border-radius: 14px; background: #334155; overflow: hidden; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex: none; }
+.cage-seat-photo img { width: 100%; height: 100%; object-fit: cover; }
+.cage-seat-name { font-size: 22px; font-weight: 800; }
+.cage-seat-sub { color: var(--text-sub); font-size: 13px; }
+.cage-seat-label { display: block; font-size: 12px; color: var(--text-sub); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.cage-seat-label select { display: block; width: 100%; margin-top: 6px; }
+.cage-seat-grid { display: grid; grid-template-columns: repeat(3, 56px); gap: 8px; }
+.cage-seat-cell { height: 56px; border-radius: 12px; border: 1px solid #1e293b; background: #1e293b; color: #475569; font-weight: 700; font-size: 16px; cursor: not-allowed; }
+.cage-seat-cell.open { background: transparent; border: 1px dashed #64748b; color: #e5e7eb; cursor: pointer; }
+.cage-seat-cell.picked { background: #FAC775; color: #1a1405; border: 0; }
+.cage-seat-err { color: #fecaca; }
+.cage-seat-foot { margin-top: 10px; font-size: 12px; color: var(--text-sub); }
+.link-btn { background: none; border: 0; color: #38bdf8; cursor: pointer; padding: 0; font-size: 12px; text-decoration: underline; }
+.cage-wait { margin-top: 12px; border: 1px solid #854F0B; background: rgba(120,53,15,0.25); border-radius: 14px; padding: 10px 12px; }
+.cage-wait-title { font-weight: 700; color: #FAC775; margin-bottom: 6px; }
+.cage-wait-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid rgba(133,79,11,0.5); font-size: 13px; }
+.cage-wait-row:first-of-type { border-top: 0; }
+.seat-open-text { color: #64748b; font-size: 12px; text-align: center; padding: 6px 0; }
+.status-asked { border-color: #f97373; background: rgba(127,29,29,0.6); color: #fecaca; }
+.seat-mini.asked { border-color: #f97373; color: #fecaca; }
