@@ -332,7 +332,7 @@ const App: React.FC = () => {
   const cloud = useCloudTables(() => Array.from({length:4},(_,i)=>createInitialTable(i+1)));
   const { tables, setTables } = cloud;
   const [currentTableId, setCurrentTableId] = useState(1);
-  const [lang, setLang] = useState<Lang>('zh');
+  const [lang, setLang] = useState<Lang>('en');
   const [nowMs, setNowMs] = useState(Date.now());
   const [names, setNames] = useState<Record<string,string>>({});
   const [levelOpen, setLevelOpen] = useState(false);
@@ -780,7 +780,20 @@ const App: React.FC = () => {
   const handleAskCashOut = (seatId: number) => {
     if (!currentTable) return;
     const by = sessionStorage.getItem('ppm-user') || '';
-    updateTable(currentTable.id, (tbl) => ({ ...tbl, seats: tbl.seats.map((s) => s.id === seatId && s.status !== 'idle' ? { ...s, cashoutAsked: s.cashoutAsked ? null : { at: Date.now(), by } } : s) }));
+    const now = Date.now();
+    // Cash Out Request = the player is up collecting chips: the clock stops like Rest. Cancel puts them back in play.
+    updateTable(currentTable.id, (tbl) => ({ ...tbl, seats: tbl.seats.map((s) => {
+      if (s.id !== seatId || s.status === 'idle') return s;
+      if (s.cashoutAsked) {
+        if (s.status !== 'rest') return { ...s, cashoutAsked: null };
+        const rested = s.lastRestStart != null ? Math.max(0, Math.floor((now - s.lastRestStart) / 1000)) : 0;
+        return { ...s, cashoutAsked: null, status: 'seated' as SeatStatus, lastActiveStart: now, lastRestStart: null, restSeconds: s.restSeconds + rested };
+      }
+      const asked = { at: now, by };
+      if (s.status !== 'seated' || s.lastActiveStart == null) return { ...s, cashoutAsked: asked };
+      const played = Math.max(0, Math.floor((now - s.lastActiveStart) / 1000));
+      return { ...s, cashoutAsked: asked, status: 'rest' as SeatStatus, lastActiveStart: null, lastRestStart: now, activeSeconds: s.activeSeconds + played };
+    }) }));
   };
 
   // Leaving asks for the cash-out amount (or Busted) before the session is written.
@@ -1195,7 +1208,7 @@ const App: React.FC = () => {
                         </span>
                       </div>
                       {seat.status !== 'idle' && <SeatPhoto memberId={seat.memberId} rest={seat.status === 'rest'} />}
-                      <div className={`seat-status-tag ${seat.cashoutAsked ? 'status-asked' : statusClass}`}>{seat.cashoutAsked ? (lang === 'zh' ? '準備結帳' : 'Cash-out ready') : statusLabel}</div>
+                      <div className={`seat-status-tag ${seat.cashoutAsked ? 'status-asked' : statusClass}`}>{seat.cashoutAsked ? 'Cash Out Request' : statusLabel}</div>
                     </div>
                     <div className="seat-timer">{formatHMS(activeSeconds)}</div>
                     <div className="seat-meta">
@@ -1221,11 +1234,11 @@ const App: React.FC = () => {
                     ) : (<>
                       <div className="seat-actions-row">
                         <div className="seat-actions">
-                          {seat.status === 'rest'
+                          {seat.cashoutAsked ? null : seat.status === 'rest'
                             ? <button type="button" className="seat-btn btn-xs-green" onClick={() => seatUp(seat.id)}>{lang === 'zh' ? '回座' : 'Back'}</button>
                             : <button type="button" className="seat-btn btn-xs-yellow" onClick={() => handleRest(seat.id)}>{t.btnRest}</button>}
                           <button type="button" className={'seat-mini' + (seat.cashoutAsked ? ' asked' : '')} onClick={() => handleAskCashOut(seat.id)}>
-                            {seat.cashoutAsked ? (lang === 'zh' ? '取消結帳通知' : 'Cancel cash-out') : (lang === 'zh' ? '準備結帳 → 通知帳房' : 'Cash-out ready → cage')}
+                            {seat.cashoutAsked ? (lang === 'zh' ? '取消 Cash Out Request' : 'Cancel Cash Out Request') : 'Cash Out Request'}
                           </button>
                         </div>
                       </div>

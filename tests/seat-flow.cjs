@@ -20,6 +20,8 @@ const App=require('/tmp/ppm-app-test.cjs').default;
 const flush=()=>new Promise(r=>setImmediate(r));
 (async()=>{let app;await act(async()=>{app=create(React.createElement(App));await flush()});
 const buttons=()=>app.root.findAllByType('button');const text=b=>[].concat(b.props.children).join('');const button=t=>buttons().find(b=>text(b)===t);
+assert.ok(button('Start / Resume'),'English by default');
+await act(async()=>app.root.findAllByType('button').find(b=>b.props.className==='lang-toggle-btn').props.onClick());
 await act(async()=>{button('開桌 / 繼續').props.onClick();await flush()});
 assert.ok(!button('上桌')&&!button('下桌')&&!buttons().some(b=>text(b).includes('加碼')),'Seat, Leave and + Chips are done at the cage now');
 // A cage buy-in pops up; pick a free seat and seat the player.
@@ -44,8 +46,9 @@ await act(async()=>{button('回座').props.onClick();await flush()});assert.equa
 await act(async()=>{button('⇄ 換位').props.onClick();await flush()});assert.equal(tables[0].seats[0].status,'idle');assert.equal(tables[0].seats[3].memberId,'EV-000001');assert.equal(tables[0].seats[3].buyInAmount,2500);assert.equal(tables[0].seats[3].sessionStart,start);
 await act(async()=>{button('⇄ 換位').props.onClick();await flush()});assert.equal(tables[0].seats[3].status,'idle');assert.equal(tables[0].seats[0].memberId,'EV-000001');assert.equal(tables[0].seats[0].status,'seated');}
 // Cash-out ready tells the cage; pressing again cancels.
-await act(async()=>{button('準備結帳 → 通知帳房').props.onClick();await flush()});assert.equal(tables[0].seats[0].cashoutAsked.by,'Phoebe');
-await act(async()=>{button('取消結帳通知').props.onClick();await flush()});assert.equal(tables[0].seats[0].cashoutAsked,null);
+// Cash Out Request: the clock stops like Rest; cancel puts the player back in play.
+await act(async()=>{button('Cash Out Request').props.onClick();await flush()});assert.equal(tables[0].seats[0].cashoutAsked.by,'Phoebe');assert.equal(tables[0].seats[0].status,'rest');assert.equal(tables[0].seats[0].lastActiveStart,null);assert.ok(!button('回座')&&!button('休息'),'no Rest/Back during a request');
+await act(async()=>{button('取消 Cash Out Request').props.onClick();await flush()});assert.equal(tables[0].seats[0].cashoutAsked,null);assert.equal(tables[0].seats[0].status,'seated');assert.ok(tables[0].seats[0].lastActiveStart);
 // Change level: a dialog confirms the new game and blinds.
 {await act(async()=>button('換級別').props.onClick());const lf=()=>app.root.findAllByType('form').find(f=>f.props.className==='cash-dialog level-dialog');assert.ok(lf());
 await act(async()=>lf().findAllByType('select')[0].props.onChange({target:{value:'PLO'}}));await act(async()=>{lf().props.onSubmit({preventDefault(){}});await flush()});assert.ok(!lf());assert.equal(tables[0].gameType,'PLO');}
@@ -58,4 +61,4 @@ const cashInput=()=>app.root.findAllByType('input').find(i=>i.props.className===
 await act(async()=>cashInput().props.onChange({target:{value:'4,000'}}));
 await act(async()=>{cashForm().props.onSubmit({preventDefault(){}});await flush()});
 assert.equal(tables[0].seats[0].status,'idle');assert.equal(tables[0].sessions[0].buyInAmount,2500);assert.equal(tables[0].sessions[0].cashOutAmount,4000);
-app.unmount();console.log('PASS: cage pop-up seating, later + reopen, no seat/leave/+chips, rest/back, change seat, cash-out ready, change level, leave without cage');})().catch(e=>{console.error(e);process.exit(1)});
+app.unmount();console.log('PASS: cage pop-up seating, later + reopen, no seat/leave/+chips, rest/back, change seat, cash out request (clock stops), change level, leave without cage');})().catch(e=>{console.error(e);process.exit(1)});
