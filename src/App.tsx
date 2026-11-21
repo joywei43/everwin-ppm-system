@@ -6,6 +6,7 @@ import LevelDialog, { GAME_TYPES, BLINDS } from './LevelDialog';
 import TableMap from './TableMap';
 import { useCloudTables, CloudLogin, resolveMember, closeCheck, memberPhoto, MemberBrief } from './cloud';
 import NameCheckDialog from './NameCheckDialog';
+import CageSeatDialog from './CageSeatDialog';
 import { gameOf, nextFor, removeSeated, WaitEntry } from './waitlist';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -24,6 +25,9 @@ interface SeatState {
   transferNote: string | null;
   sessionStart: string | null;
   selectedForBatch: boolean;
+  // Set by the floor: the player is coming to cash out (the cage sees it).
+  cashoutAsked?: { at: number; by: string } | null;
+  seatedBy?: string;
 }
 
 interface SessionRow {
@@ -338,6 +342,10 @@ const App: React.FC = () => {
   const seatedKey = seatedNames.slice().sort().join('|');
   useEffect(() => { if (seatedNames.length && sessionStorage.getItem('ppm-session')) removeSeated(seatedNames).catch(() => {}); }, [seatedKey]);
   const [cashOut, setCashOut] = useState<null | { seats: CashOutSeat[]; onConfirm: (r: Record<number, CashOutResult>) => void }>(null);
+  // Cage buy-ins waiting for a seat: the oldest one pops up; "Later" hides it until it is opened from the list.
+  const [later, setLater] = useState<number[]>([]);
+  const [seatFor, setSeatFor] = useState<number | null>(null);
+  const seatEntry = cloud.waiting.find((w) => w.id === seatFor) || (seatFor == null ? cloud.waiting.find((w) => !later.includes(w.id)) : undefined);
   const withNames = (tbl: TableState): TableState => ({...tbl,seats:tbl.seats.map(seat=>seat.status === 'idle' ? {...seat,memberId:names[tbl.id+':'+seat.id] ?? seat.memberId}:seat)});
 
   useEffect(() => {
@@ -769,6 +777,12 @@ const App: React.FC = () => {
     });
   };
 
+  const handleAskCashOut = (seatId: number) => {
+    if (!currentTable) return;
+    const by = sessionStorage.getItem('ppm-user') || '';
+    updateTable(currentTable.id, (tbl) => ({ ...tbl, seats: tbl.seats.map((s) => s.id === seatId && s.status !== 'idle' ? { ...s, cashoutAsked: s.cashoutAsked ? null : { at: Date.now(), by } } : s) }));
+  };
+
   // Leaving asks for the cash-out amount (or Busted) before the session is written.
   const leaveSeats = (tableId: number, results: Record<number, CashOutResult>) => {
     const now = Date.now();
@@ -1005,6 +1019,10 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+      {seatEntry && !cashOut && !nameCheck && <CageSeatDialog key={seatEntry.id} entry={seatEntry} tables={tables} preferTableId={currentTableId} lang={lang} busy={cloud.busy}
+        onSeat={async (tableId, seatId) => { const e = await cloud.seatWaiting(seatEntry.id, tableId, seatId); if (!e) { setSeatFor(null); setCurrentTableId(tableId); } return e; }}
+        onLater={() => { setLater((l) => [...l, seatEntry.id]); setSeatFor(null); }}
+        onRemove={() => { if (window.confirm(lang === 'zh' ? `把 ${seatEntry.name} 從等候入座名單移除？（客人沒有要玩）` : `Take ${seatEntry.name} off the list? (not playing)`)) { cloud.removeWaiting(seatEntry.id, 'not playing'); setSeatFor(null); } }} />}
       {cashOut && <CashOutDialog seats={cashOut.seats} lang={lang} onCancel={() => setCashOut(null)} onConfirm={(r) => { const done = cashOut.onConfirm; setCashOut(null); done(r); }} />}
       <fieldset disabled={cloud.busy} style={{border:0,padding:0,margin:0}}>
       <div className="app-shell">
@@ -1066,6 +1084,17 @@ const App: React.FC = () => {
               </div>
             </div>
             <TableMap tables={tables} currentId={currentTableId} onPick={setCurrentTableId} />
+            {cloud.waiting.length > 0 && (
+              <div className="cage-wait">
+                <div className="cage-wait-title">{lang === 'zh' ? `等候入座（帳房已買入）· ${cloud.waiting.length}` : `Waiting for a seat (bought in at the cage) · ${cloud.waiting.length}`}</div>
+                {cloud.waiting.map((w) => (
+                  <div className="cage-wait-row" key={w.id}>
+                    <span><b>{w.name}</b> #{w.member_no} · {w.amount.toLocaleString('en-US')}</span>
+                    <button type="button" className="seat-btn btn-xs-green" onClick={() => { setLater((l) => l.filter((x) => x !== w.id)); setSeatFor(w.id); }}>{lang === 'zh' ? '入座' : 'Seat'}</button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="table-clock-wrapper">
               <div className="clock-title-row">
@@ -1166,7 +1195,7 @@ const App: React.FC = () => {
                         </span>
                       </div>
                       {seat.status !== 'idle' && <SeatPhoto memberId={seat.memberId} rest={seat.status === 'rest'} />}
-                      <div className={`seat-status-tag ${statusClass}`}>{statusLabel}</div>
+                      <div className={`seat-status-tag ${seat.cashoutAsked ? 'status-asked' : statusClass}`}>{seat.cashoutAsked ? (lang === 'zh' ? '準備結帳' : 'Cash-out ready') : statusLabel}</div>
                     </div>
                     <div className="seat-timer">{formatHMS(activeSeconds)}</div>
                     <div className="seat-meta">
@@ -1187,77 +1216,33 @@ const App: React.FC = () => {
                         <div className="meta-value">{seat.memberId || '-'}</div>
                       </div>
                     </div>
-                    <div className="seat-actions-row">
-                      <div className="seat-actions">
-                        <button
-                          type="button"
-                          className="seat-btn btn-xs-green"
-                          onClick={() => handleSeatUp(seat.id)}
-                        >
-                          {t.btnSeat}
-                        </button>
-                        <button
-                          type="button"
-                          className="seat-btn btn-xs-yellow"
-                          onClick={() => handleRest(seat.id)}
-                        >
-                          {t.btnRest}
-                        </button>
-                        <button
-                          type="button"
-                          className="seat-btn btn-xs-red"
-                          onClick={() => handleLeave(seat.id)}
-                        >
-                          {t.btnLeave}
-                        </button>
+                    {seat.status === 'idle' ? (
+                      <div className="seat-open-text">{lang === 'zh' ? '空位 · 由帳房買入名單入座' : 'Open · seat players from the cage list'}</div>
+                    ) : (<>
+                      <div className="seat-actions-row">
+                        <div className="seat-actions">
+                          {seat.status === 'rest'
+                            ? <button type="button" className="seat-btn btn-xs-green" onClick={() => seatUp(seat.id)}>{lang === 'zh' ? '回座' : 'Back'}</button>
+                            : <button type="button" className="seat-btn btn-xs-yellow" onClick={() => handleRest(seat.id)}>{t.btnRest}</button>}
+                          <button type="button" className={'seat-mini' + (seat.cashoutAsked ? ' asked' : '')} onClick={() => handleAskCashOut(seat.id)}>
+                            {seat.cashoutAsked ? (lang === 'zh' ? '取消結帳通知' : 'Cancel cash-out') : (lang === 'zh' ? '準備結帳 → 通知帳房' : 'Cash-out ready → cage')}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    {seat.status !== 'idle' && (
                       <div className="seat-mini-row">
                         <button type="button" className="seat-mini" onClick={() => handleChangeSeat(seat.id)}>
                           ⇄ {t.btnChangeSeat}
                         </button>
-                        <button type="button" className="seat-mini" onClick={() => handleAddBuyIn(seat.id)}>
-                          {t.btnAddBuyIn}
+                        <button type="button" className="seat-mini" title={lang === 'zh' ? '只用在客人沒到帳房結帳就離開' : 'Only when the player left without cashing out at the cage'} onClick={() => handleLeave(seat.id)}>
+                          {lang === 'zh' ? '離桌（未經帳房）' : 'Left (no cage)'}
                         </button>
                       </div>
-                    )}
-                    <div className="seat-extra-row">
-                      <MemberInput
-                        placeholder={t.memberId}
-                        value={seat.memberId}
-                        disabled={seat.status !== 'idle'}
-                        onChange={(e) => handleMemberChange(seat.id, e.target.value)}
-                      />
-                      <label className="batch-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={seat.selectedForBatch}
-                          onChange={() => handleToggleBatchSeat(seat.id)}
-                        />
-                        {t.batchLabel}
-                      </label>
-                    </div>
+                    </>)}
                   </div>
                 );
               })}
             </div>
-            <div className="app-footer-batch">
-              <button
-                type="button"
-                className="seat-btn btn-xs-green"
-                onClick={handleBatchSeat}
-              >
-                {t.btnBatchSeat}
-              </button>
-              <button
-                type="button"
-                className="seat-btn btn-xs-red"
-                onClick={handleBatchLeave}
-              >
-                {t.btnBatchLeave}
-              </button>
-            </div>
+            <div className="seat-open-text" style={{ marginTop: 10 }}>{lang === 'zh' ? '買入、加碼、結出都在帳房處理；帳房結出時自動離桌。' : 'Buy-in, add-on and cash-out are done at the cage; a cage cash-out frees the seat.'}</div>
           </section>
         </main>
         <Queue seated={seatedNames} />

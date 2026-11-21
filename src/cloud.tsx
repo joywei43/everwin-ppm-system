@@ -23,6 +23,8 @@ export function useCloudTables(initial: () => TableState[]) {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(null), next.kind === 'ok' ? 8000 : 20000);
   };
+  // Players who bought in at the cage and wait for a seat (pop-up in PPM; the cage desk can seat them too).
+  const [waiting, setWaiting] = useState<WaitingSeat[]>([]);
   const receive = useCallback((data: any) => {
     version.current = data.version;
     current.current = data.tables.length ? data.tables : initial();
@@ -42,6 +44,7 @@ export function useCloudTables(initial: () => TableState[]) {
     let disposed = false;
     async function refresh() {
       if (locked.current || refreshing.current) return;
+      request('/ppm/waiting').then((w) => { if (!disposed && Array.isArray(w.waiting)) setWaiting(w.waiting); }).catch(() => {});
       try { const data = await request('/ppm'); if (!disposed) { receive(data); setReady(true); setMessage(data.version ? 'Connected · Live Update synced' : 'Connected · Start a table to publish PPM tables'); } }
       catch (e) { if (!disposed) setMessage(String((e as Error).message)); }
 
@@ -66,6 +69,22 @@ export function useCloudTables(initial: () => TableState[]) {
       } finally {locked.current=false;setBusy(false);}
     })();
   };
+  // Seat a player from the cage list: the server writes the seat (member no., buy-in, start time) and returns the new state.
+  const seatWaiting = async (id: number, tableId: number, seatId: number): Promise<string | null> => {
+    if (sessionStorage.getItem('ppm-role') === 'senior') return '唯讀帳號 Read only (Senior Dealer)';
+    if (locked.current) return 'Sync in progress. Please retry.';
+    locked.current = true; setBusy(true);
+    try {
+      if (refreshing.current) await refreshing.current;
+      const data = await request('/ppm/seat', 'POST', { id, table_id: tableId, seat_id: seatId });
+      receive(data); setWaiting((w) => w.filter((x) => x.id !== id)); setMessage('Seated · Live Update synced'); return null;
+    } catch (e) {
+      const msg = (e as Error).message; setMessage(msg); try { receive(await request('/ppm')); } catch {} return msg;
+    } finally { locked.current = false; setBusy(false); }
+  };
+  const removeWaiting = async (id: number, reason: string) => {
+    try { await request('/ppm/waiting/' + id + '/remove', 'POST', { reason }); setWaiting((w) => w.filter((x) => x.id !== id)); } catch (e) { setMessage((e as Error).message); }
+  };
   const login = async (username: string, password: string) => {
     setBusy(true);
     try { const data = await request('/login','POST',{username:username.trim(),password},'');
@@ -74,13 +93,15 @@ export function useCloudTables(initial: () => TableState[]) {
     catch(e){setMessage((e as Error).message);}finally{setBusy(false);}
   };
   const logout = async () => {try {await request('/logout','POST',{});}finally{sessionStorage.removeItem('ppm-session');sessionStorage.removeItem('ppm-user');sessionStorage.removeItem('ppm-role');setToken('');setReady(false);}};
-  return {tables,setTables,ready,busy,message,notice,login,logout};
+  return {tables,setTables,ready,busy,message,notice,login,logout,waiting,seatWaiting,removeWaiting};
 }
 export function CloudLogin({cloud}:{cloud:ReturnType<typeof useCloudTables>}) {
   const [username,setUsername]=useState('');
   const [password,setPassword]=useState('');
   return <main style={{maxWidth:420,margin:'60px auto',padding:24}}><h1>Everwin PPM</h1><p>Staff sign in</p><form style={{display:'grid',gap:10}} onSubmit={e=>{e.preventDefault();cloud.login(username,password);}}><label>Username <input aria-label="Username" autoComplete="username" autoCapitalize="off" spellCheck={false} maxLength={60} value={username} onChange={e=>setUsername(e.target.value)} required/></label><label>Password <input aria-label="Password" type="password" autoComplete="current-password" maxLength={200} value={password} onChange={e=>setPassword(e.target.value)} required/></label><button disabled={cloud.busy}>Sign in</button></form><p role="alert">{cloud.message}</p></main>;
 }
+
+export interface WaitingSeat { id: number; member_no: string; name: string; amount: number; created_at: number; created_by: string; nationality?: string | null; }
 
 export interface MemberHit { member_no: string; name: string; nickname: string; nick_label?: string; nationality?: string; group_name: string | null; status: string; }
 // Member lookup for the seat input. Returns [] on any error so typing never breaks PPM.
